@@ -13,6 +13,7 @@ interface DashboardProps {
   syncStatus: { added: number } | null;
   setSyncStatus: (val: any) => void;
   STATUSES: string[];
+  onTakeAction: (jobId: number | null) => void;
 }
 
 export default function Dashboard({
@@ -22,7 +23,8 @@ export default function Dashboard({
   aiSuggestions,
   syncStatus,
   setSyncStatus,
-  STATUSES
+  STATUSES,
+  onTakeAction
 }: DashboardProps) {
 
   return (
@@ -100,7 +102,10 @@ export default function Dashboard({
                 {s.message}
               </p>
 
-              <div className="mt-4 pt-4 border-t border-white/10 cursor-pointer flex items-center gap-2 text-blue-400 text-xs font-bold">
+              <div 
+                onClick={() => onTakeAction(s.job_id)}
+                className="mt-4 pt-4 border-t border-white/10 cursor-pointer flex items-center gap-2 text-blue-400 text-xs font-bold hover:text-blue-300 transition-colors"
+              >
                 Take Action <ArrowRight size={14} />
               </div>
             </motion.div>

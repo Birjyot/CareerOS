@@ -471,7 +471,7 @@ def upload_resume():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# LINK SHORTENER — share ATS results
+#  SHORTENER — share ATS resultLINKs
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _generate_code(length: int = 8) -> str:
@@ -540,8 +540,12 @@ def resolve_short_link(code):
         return jsonify({'error': 'Link not found'}), 404
     if link.is_expired():
         return jsonify({'error': 'This link has expired'}), 410
+    link.click_count += 1
+    db.session.commit()
+    
+    return jsonify(json.loads(link.target_data))
 
-    # # Gmail Auth State
+# # Gmail Auth State
 _gmail_auth_state = {}
 
 @app.route("/api/gmail/auth-start", methods=["POST"])
@@ -570,8 +574,12 @@ def gmail_auth_start():
 
     auth_url, state = flow.authorization_url(prompt='consent', access_type='offline')
     
-    # Store state to verify callback
-    _gmail_auth_state[user_email] = {"state": state, "status": "pending"}
+    # Store state and PKCE verifier to verify callback
+    _gmail_auth_state[user_email] = {
+        "state": state, 
+        "status": "pending",
+        "code_verifier": getattr(flow, 'code_verifier', None)
+    }
     
     return jsonify({"auth_url": auth_url, "status": "pending"})
 
@@ -580,8 +588,14 @@ def gmail_callback():
     state = request.args.get('state')
     code = request.args.get('code')
     
-    # Find the user by state
-    user_email = next((u for u, s in _gmail_auth_state.items() if s["state"] == state), None)
+    # Find the user and state data by state
+    user_email = None
+    stored_state = None
+    for u, s in _gmail_auth_state.items():
+        if s["state"] == state:
+            user_email = u
+            stored_state = s
+            break
     
     if not user_email:
         return "Error: Invalid state or session expired. Please try again.", 400
@@ -599,6 +613,10 @@ def gmail_callback():
         else:
             flow = Flow.from_client_secrets_file('credentials.json', scopes=['https://www.googleapis.com/auth/gmail.readonly'], redirect_uri=redirect_uri)
             
+        # Restore the PKCE code verifier from the auth-start step
+        if stored_state and stored_state.get('code_verifier'):
+            flow.code_verifier = stored_state['code_verifier']
+
         flow.fetch_token(code=code)
         creds = flow.credentials
 
@@ -690,4 +708,4 @@ def gmail_sync():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5000)

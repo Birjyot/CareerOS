@@ -100,6 +100,7 @@ export default function PremiumJobTracker() {
   const [matchResult, setMatchResult] = useState<any>(null);
   const [isMatchLoading, setIsMatchLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncSuccess, setIsSyncSuccess] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{added: number} | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [activeAiView, setActiveAiView] = useState<'chat' | 'ats'>('chat');
@@ -303,6 +304,9 @@ export default function PremiumJobTracker() {
 
       if (!res.ok) throw new Error(data.error || 'Sync failed');
       setSyncStatus({ added: data.added });
+      setIsSyncSuccess(true);
+      setTimeout(() => setIsSyncSuccess(false), 3000);
+      
       if (data.added > 0) {
         fetchJobs(); 
         setNotification({ message: `Successfully synced! Found ${data.added} new applications from your Gmail.`, type: 'success' });
@@ -437,6 +441,7 @@ export default function PremiumJobTracker() {
 
             handleGmailSync={handleGmailSync}
             isSyncing={isSyncing}
+            isSyncSuccess={isSyncSuccess}
 
             handleDragStart={handleDragStart}
             handleDrop={handleDrop}          

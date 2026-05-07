@@ -13,7 +13,7 @@ import {
   YAxis
 } from 'recharts';
 
-export default function StatsChart({ data, height = "h-full" }) {
+export default function StatsChart({ data, height = "h-full" }: { data: any[], height?: string }) {
 
   if (!data || data.length === 0) {
     return (

@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Briefcase, Zap, Download, FileText, Brain, List, LayoutGrid, ChevronDown } from 'lucide-react';
+import { Briefcase, Zap, Download, FileText, Brain, List, LayoutGrid, ChevronDown, Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface ApplicationsProps {
@@ -35,6 +35,7 @@ interface ApplicationsProps {
 
   handleGmailSync: () => void;
   isSyncing: boolean;
+  isSyncSuccess: boolean;
 
   handleDragStart: any;
   handleDrop: any;
@@ -67,6 +68,7 @@ export default function Applications(props: ApplicationsProps) {
     exportCSV,
     handleGmailSync,
     isSyncing,
+    isSyncSuccess,
     handleDragStart,
     handleDrop,
     JobCard
@@ -108,18 +110,27 @@ export default function Applications(props: ApplicationsProps) {
           {/* SYNC */}
           <button
             onClick={handleGmailSync}
-            disabled={isSyncing}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white/80 hover:text-white"
+            disabled={isSyncing || isSyncSuccess}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all duration-300"
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.08)'
+              background: isSyncSuccess 
+                ? 'rgba(34, 197, 94, 0.2)' 
+                : 'rgba(255,255,255,0.06)',
+              border: isSyncSuccess 
+                ? '1px solid rgba(34, 197, 94, 0.4)' 
+                : '1px solid rgba(255,255,255,0.08)',
+              backdropFilter: 'blur(10px)',
+              color: isSyncSuccess ? '#4ade80' : 'rgba(255,255,255,0.8)'
             }}
           >
-            {isSyncing
-              ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              : <Zap size={16} />
-            }
-            {isSyncing ? 'Syncing...' : 'Sync Gmail'}
+            {isSyncing ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : isSyncSuccess ? (
+              <Check size={16} />
+            ) : (
+              <Zap size={16} />
+            )}
+            {isSyncing ? 'Syncing...' : isSyncSuccess ? 'Synced!' : 'Sync Gmail'}
           </button>
 
           {/* FILTER */}

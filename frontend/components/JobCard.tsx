@@ -1,6 +1,7 @@
 'use client';
 
 import { Brain, FileText } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface Job {
   id: number;
@@ -22,10 +23,12 @@ interface JobCardProps {
   onDragStart: (job: Job) => void;
   onEdit: (job: Job) => void;
   onDelete: (id: number) => void;
-  onGenerateCoverLetter: (company: string, position: string) => void;
-  onGenerateInterview: (position: string) => void;
+  onGenerateCoverLetter: (id: number, company: string, position: string) => void;
+  onGenerateInterview: (id: number, position: string) => void;
 
   statusStyles: Record<string, string>;
+  isGeneratingCL?: boolean;
+  isGeneratingQuestions?: boolean;
 }
 
 export default function JobCard({
@@ -37,13 +40,15 @@ export default function JobCard({
   onGenerateCoverLetter,
   onGenerateInterview,
   statusStyles,
+  isGeneratingCL,
+  isGeneratingQuestions,
 }: JobCardProps) {
   return (
     <div
       draggable
       onDragStart={() => onDragStart(job)}
       className={`
-        rounded-2xl transition-all cursor-grab active:cursor-grabbing
+        rounded-2xl transition-all cursor-grab active:cursor-grabbing relative
         ${compact ? 'p-3' : 'p-5'}
       `}
       style={{
@@ -52,35 +57,34 @@ export default function JobCard({
         border: '1px solid rgba(255,255,255,0.08)',
       }}
     >
+      {/* Tags */}
+      <div className="absolute top-3 right-3 flex items-center gap-2">
+        {job.platform && !compact && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium 
+            bg-white/10 text-blue-300 border border-white/10">
+            {job.platform}
+          </span>
+        )}
+        {!compact && (
+          <span
+            className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border backdrop-blur-md
+            ${statusStyles[job.status] || 'bg-white/10 text-white border-white/20'}`}
+          >
+            {job.status}
+          </span>
+        )}
+      </div>
 
       {/* HEADER */}
-      <div className="flex items-start justify-between mb-3 gap-2">
+      <div className="flex items-start justify-between mb-3 gap-2 pr-16">
 
         <div className="flex-1 min-w-0">
 
-          {/* POSITION + STATUS */}
+          {/* POSITION */}
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <p className={`font-bold text-white truncate ${compact ? 'text-sm' : 'text-base'}`}>
               {job.position}
             </p>
-
-            {/* STATUS */}
-            {!compact && (
-              <span
-                className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border backdrop-blur-md
-                ${statusStyles[job.status] || 'bg-white/10 text-white border-white/20'}`}
-              >
-                {job.status}
-              </span>
-            )}
-
-            {/* PLATFORM */}
-            {job.platform && !compact && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium 
-                bg-white/10 text-blue-300 border border-white/10">
-                {job.platform}
-              </span>
-            )}
           </div>
 
           {/* COMPANY */}
@@ -106,17 +110,29 @@ export default function JobCard({
       <div className="flex gap-3 flex-wrap items-center text-xs">
 
         <button
-          onClick={() => onGenerateCoverLetter(job.company, job.position)}
-          className="text-blue-400 hover:text-blue-300 transition flex items-center gap-1"
+          onClick={() => onGenerateCoverLetter(job.id, job.company, job.position)}
+          disabled={isGeneratingCL}
+          className={`text-blue-400 hover:text-blue-300 transition flex items-center gap-1 ${isGeneratingCL ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          <FileText size={12} /> Cover
+          {isGeneratingCL ? (
+            <div className="w-3 h-3 border border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+          ) : (
+            <FileText size={12} />
+          )}
+          {isGeneratingCL ? 'Gen...' : 'Cover'}
         </button>
 
         <button
-          onClick={() => onGenerateInterview(job.position)}
-          className="text-blue-400 hover:text-blue-300 transition flex items-center gap-1"
+          onClick={() => onGenerateInterview(job.id, job.position)}
+          disabled={isGeneratingQuestions}
+          className={`text-blue-400 hover:text-blue-300 transition flex items-center gap-1 ${isGeneratingQuestions ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          <Brain size={12} /> Prep
+          {isGeneratingQuestions ? (
+            <div className="w-3 h-3 border border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+          ) : (
+            <Brain size={12} />
+          )}
+          {isGeneratingQuestions ? 'Prep...' : 'Prep'}
         </button>
 
         <button
