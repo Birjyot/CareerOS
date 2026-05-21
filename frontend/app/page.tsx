@@ -266,9 +266,6 @@ export default function PremiumJobTracker() {
     setIsSyncing(true);
     setSyncStatus(null);
 
-    // 30-second hard timeout — Render free tier drops long requests
-    const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 30_000);
 
     try {
       // ── Step 1: Try to sync (will return needs_auth if not yet authorised) ──
@@ -278,12 +275,8 @@ export default function PremiumJobTracker() {
           method:      'POST',
           headers:     authHeaders(),
           credentials: 'include',
-          signal:      controller.signal,
         });
       } catch (fetchErr: any) {
-        if (fetchErr?.name === 'AbortError') {
-          throw new Error('Gmail sync timed out after 30 seconds. Please try again.');
-        }
         throw new Error(`Network error: ${fetchErr.message}`);
       }
 
@@ -392,7 +385,6 @@ export default function PremiumJobTracker() {
       console.error('[GmailSync] Error:', err);
       setNotification({ message: `Gmail Sync Error: ${err.message}`, type: 'error' });
     } finally {
-      clearTimeout(timeoutId);
       setIsSyncing(false);
       setTimeout(() => setNotification(null), 8000);
     }
