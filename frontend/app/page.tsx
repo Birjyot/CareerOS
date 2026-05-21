@@ -263,61 +263,138 @@ export default function PremiumJobTracker() {
   };
 
   const handleGmailSync = async () => {
-    setIsSyncing(true); 
+    setIsSyncing(true);
     setSyncStatus(null);
+
+    // 30-second hard timeout — Render free tier drops long requests
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 30_000);
+
     try {
-      const res = await fetch(`${API_BASE_URL}/api/gmail/sync`, { method: 'POST', headers: authHeaders() });
-      const data = await res.json();
-      
+      // ── Step 1: Try to sync (will return needs_auth if not yet authorised) ──
+      let res: Response;
+      try {
+        res = await fetch(`${API_BASE_URL}/api/gmail/sync`, {
+          method:      'POST',
+          headers:     authHeaders(),
+          credentials: 'include',
+          signal:      controller.signal,
+        });
+      } catch (fetchErr: any) {
+        if (fetchErr?.name === 'AbortError') {
+          throw new Error('Gmail sync timed out after 30 seconds. Please try again.');
+        }
+        throw new Error(`Network error: ${fetchErr.message}`);
+      }
+
+      // Safe JSON parse — backend may return HTML on crash
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(
+          `Server returned a non-JSON response (status ${res.status}). ` +
+          'Check Render logs for the real error.'
+        );
+      }
+
+      // ── Step 2: If no Gmail auth yet, start OAuth flow ───────────────────
       if (data.error === 'needs_auth') {
-        const startRes = await fetch(`${API_BASE_URL}/api/gmail/auth-start`, { method: 'POST', headers: authHeaders() });
-        const startData = await startRes.json();
-        
+        let startRes: Response;
+        try {
+          startRes = await fetch(`${API_BASE_URL}/api/gmail/auth-start`, {
+            method:      'POST',
+            headers:     authHeaders(),
+            credentials: 'include',
+          });
+        } catch (fetchErr: any) {
+          throw new Error(`Could not reach auth endpoint: ${fetchErr.message}`);
+        }
+
+        let startData: any;
+        try {
+          startData = await startRes.json();
+        } catch {
+          throw new Error('Invalid response from auth-start endpoint.');
+        }
+
         if (startData.auth_url) {
-          setNotification({ message: "Check your browser! Please grant access in the new Google tab to continue.", type: 'info' });
+          setNotification({
+            message: 'Check your browser! Grant access in the new Google tab to continue.',
+            type:    'info',
+          });
           window.open(startData.auth_url, '_blank');
-          
-          // Step 2: Poll for completion
+
+          // Poll for OAuth completion (checks DB-backed status)
           const pollInterval = setInterval(async () => {
             try {
-              const statusRes = await fetch(`${API_BASE_URL}/api/gmail/auth-status`, { headers: authHeaders() });
+              const statusRes  = await fetch(`${API_BASE_URL}/api/gmail/auth-status`, {
+                headers:     authHeaders(),
+                credentials: 'include',
+              });
               const statusData = await statusRes.json();
-              
+
               if (statusData.status === 'done') {
                 clearInterval(pollInterval);
-                setNotification({ message: "Authorization successful! Syncing your emails...", type: 'success' });
-                handleGmailSync(); 
+                setNotification({ message: 'Authorization successful! Syncing emails…', type: 'success' });
+                handleGmailSync();
               } else if (statusData.status === 'error') {
                 clearInterval(pollInterval);
                 setIsSyncing(false);
-                setNotification({ message: `Authorization Failed: ${statusData.message}`, type: 'error' });
+                setNotification({
+                  message: `Authorization failed: ${statusData.message || 'Unknown error'}`,
+                  type:    'error',
+                });
               }
             } catch (pollErr) {
-              console.error("Polling error:", pollErr);
+              console.error('Gmail auth-status poll error:', pollErr);
             }
           }, 3000);
-          
-          return;
+
+          return; // keep isSyncing=true while polling
         }
-        throw new Error(startData.error || 'Could not start authorization');
+
+        throw new Error(startData.error || 'Could not start Gmail authorization');
       }
 
-      if (!res.ok) throw new Error(data.error || 'Sync failed');
-      setSyncStatus({ added: data.added });
+      // ── Step 3: Handle sync errors ────────────────────────────────────────
+      if (!res.ok) {
+        throw new Error(data.error || `Sync failed with status ${res.status}`);
+      }
+
+      // ── Step 4: Success ───────────────────────────────────────────────────
+      const added   = data.added   ?? 0;
+      const updated = data.updated ?? 0;
+      const skipped = data.skipped ?? 0;
+
+      setSyncStatus({ added });
       setIsSyncSuccess(true);
       setTimeout(() => setIsSyncSuccess(false), 3000);
-      
-      if (data.added > 0) {
-        fetchJobs(); 
-        setNotification({ message: `Successfully synced! Found ${data.added} new applications from your Gmail.`, type: 'success' });
+
+      if (added > 0 || updated > 0) {
+        fetchJobs();
+        const parts = [];
+        if (added   > 0) parts.push(`${added} new application${added   !== 1 ? 's' : ''}`);
+        if (updated > 0) parts.push(`${updated} status update${updated !== 1 ? 's' : ''}`);
+        if (skipped > 0) parts.push(`${skipped} skipped`);
+        setNotification({
+          message: `Gmail sync complete! ${parts.join(', ')}.`,
+          type:    'success',
+        });
       } else {
-        setNotification({ message: "Sync completed! No new job applications were found in your Gmail snippets.", type: 'info' });
+        setNotification({
+          message: 'Sync complete — no new job applications found in Gmail.',
+          type:    'info',
+        });
       }
+
     } catch (err: any) {
+      console.error('[GmailSync] Error:', err);
       setNotification({ message: `Gmail Sync Error: ${err.message}`, type: 'error' });
     } finally {
+      clearTimeout(timeoutId);
       setIsSyncing(false);
-      setTimeout(() => setNotification(null), 6000);
+      setTimeout(() => setNotification(null), 8000);
     }
   };
 

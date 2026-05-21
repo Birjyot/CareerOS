@@ -25,8 +25,26 @@ from backend.file_parser import parse_uploaded_file
 
 # ── App setup ────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-# Explicitly allow all origins and the custom X-User-Email header
-CORS(app, resources={r"/api/*": {"origins": "https://careeros-prepify.netlify.app"}}, allow_headers=["Content-Type", "X-User-Email"])
+
+# ── CORS — must be initialised BEFORE any route registration ─────────────────
+# supports_credentials=True is required for cookies/sessions.
+# Manually inject CORS headers in the error handler below to cover crash cases
+# (Render returns HTML on unhandled exceptions which strips Flask-CORS headers).
+_ALLOWED_ORIGINS = [
+    "https://careeros-prepify.netlify.app",
+    "http://localhost:3000",
+]
+CORS(
+    app,
+    resources={r"/api/*": {"origins": _ALLOWED_ORIGINS}},
+    supports_credentials=True,
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-User-Email"
+    ],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+)
 
 app.add_url_rule('/api/jobs/parse', view_func=parse_job_url, methods=['POST'])
 
@@ -68,15 +86,34 @@ def home():
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    # Pass through HTTP errors
+    """Global error handler — always returns JSON and always injects CORS headers.
+
+    When Flask crashes, Render's proxy returns a raw HTML page that has no
+    Access-Control-Allow-Origin header, causing browsers to report a CORS
+    error.  By manually adding the header here we ensure the real error JSON
+    reaches the frontend even when the route handler blows up.
+    """
+    import traceback as _tb
+
+    # Pass through Werkzeug HTTP errors (404, 405, etc.) — they already have
+    # a .code attribute.
     if hasattr(e, 'code'):
-        return jsonify({"error": str(e)}), e.code
-    # Handle non-HTTP exceptions only
-    import traceback
-    print("--- BACKEND CRASH ---")
-    traceback.print_exc()
-    print("---------------------")
-    return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
+        response = jsonify({"error": str(e)})
+        status   = e.code
+    else:
+        print("[BACKEND CRASH] Unhandled exception:")
+        _tb.print_exc()
+        print("[BACKEND CRASH] ---")
+        response = jsonify({"error": "Internal Server Error", "details": str(e)})
+        status   = 500
+
+    # Manually inject CORS headers so the browser can read the error JSON
+    origin = request.headers.get("Origin", "")
+    if origin in _ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"]      = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    return response, status
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -545,8 +582,8 @@ def resolve_short_link(code):
     
     return jsonify(json.loads(link.target_data))
 
-# # Gmail Auth State
-_gmail_auth_state = {}
+# Gmail OAuth state is now stored in the User.gmail_auth_state DB column
+# (replaces the old in-memory dict that was wiped on every Render restart).
 
 @app.route("/api/gmail/debug", methods=["GET"])
 def gmail_debug():
@@ -580,6 +617,7 @@ def gmail_debug():
 
 @app.route("/api/gmail/auth-start", methods=["POST"])
 def gmail_auth_start():
+    """Begin Gmail OAuth flow.  Stores state in DB (Render-restart-safe)."""
     user_email = get_user_id()
     if not user_email:
         return jsonify({"error": "Unauthorized"}), 401
@@ -589,63 +627,86 @@ def gmail_auth_start():
         redirect_uri = "https://careeros-xooj.onrender.com/api/gmail/callback"
 
     from google_auth_oauthlib.flow import Flow
+    import traceback as _tb
 
     try:
-        # Priority 1: Environment Variable (for Render/Production)
-        # Priority 2: Local File (for Local Dev)
-        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-        if creds_json:
+        creds_json_env = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if creds_json_env:
             try:
-                creds_info = json.loads(creds_json)
+                creds_info = json.loads(creds_json_env)
             except Exception as e:
-                return jsonify({"error": f"GOOGLE_CREDENTIALS_JSON is set but contains invalid JSON: {e}"}), 500
+                return jsonify({
+                    "error": f"GOOGLE_CREDENTIALS_JSON is set but contains invalid JSON: {e}"
+                }), 500
             flow = Flow.from_client_config(
                 creds_info,
                 scopes=['https://www.googleapis.com/auth/gmail.readonly'],
-                redirect_uri=redirect_uri
+                redirect_uri=redirect_uri,
             )
         else:
             if not os.path.exists('credentials.json'):
                 return jsonify({
-                    "error": "OAuth credentials not configured. Set the GOOGLE_CREDENTIALS_JSON environment variable on Render."
+                    "error": "OAuth credentials not configured. "
+                             "Set GOOGLE_CREDENTIALS_JSON on Render."
                 }), 500
             flow = Flow.from_client_secrets_file(
                 'credentials.json',
                 scopes=['https://www.googleapis.com/auth/gmail.readonly'],
-                redirect_uri=redirect_uri
+                redirect_uri=redirect_uri,
             )
 
         auth_url, state = flow.authorization_url(prompt='consent', access_type='offline')
 
-        _gmail_auth_state[user_email] = {
-            "state": state,
-            "status": "pending",
-            "code_verifier": getattr(flow, 'code_verifier', None)
-        }
+        # ── Persist OAuth state to DB (survives Render restarts) ──────────────
+        user = get_or_create_user(user_email)
+        user.gmail_auth_state = json.dumps({
+            "state":         state,
+            "status":        "pending",
+            "code_verifier": getattr(flow, 'code_verifier', None),
+        })
+        db.session.commit()
+        print(f"[GmailAuth] auth-start: state persisted to DB for {user_email}")
 
         return jsonify({"auth_url": auth_url, "status": "pending"})
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        _tb.print_exc()
         return jsonify({"error": f"Failed to start Gmail auth: {str(e)}"}), 500
 
 @app.route("/api/gmail/callback")
 def gmail_callback():
+    """OAuth callback.  Reads state from DB (Render-restart-safe)."""
+    import traceback as _tb
+
     state = request.args.get('state')
-    code = request.args.get('code')
-    
-    # Find the user and state data by state
-    user_email = None
+    code  = request.args.get('code')
+
+    if not state or not code:
+        return jsonify({"error": "Missing state or code parameter."}), 400
+
+    # ── Look up user by state stored in DB ───────────────────────────────────
+    from sqlalchemy import text as _sql_text
+    users_with_state = db.session.execute(
+        _sql_text("SELECT id, email, gmail_auth_state FROM \"user\" WHERE gmail_auth_state IS NOT NULL")
+    ).fetchall()
+
+    user_email   = None
     stored_state = None
-    for u, s in _gmail_auth_state.items():
-        if s["state"] == state:
-            user_email = u
-            stored_state = s
-            break
-    
+    for row in users_with_state:
+        try:
+            s = json.loads(row[2])
+            if s.get("state") == state:
+                user_email   = row[1]
+                stored_state = s
+                break
+        except Exception:
+            continue
+
     if not user_email:
-        return "Error: Invalid state or session expired. Please try again.", 400
+        return (
+            "<h1>Authentication Failed</h1>"
+            "<p>Invalid or expired OAuth state. Please close this window and try again.</p>"
+        ), 400
 
     try:
         redirect_uri = "http://localhost:5001/api/gmail/callback"
@@ -653,14 +714,22 @@ def gmail_callback():
             redirect_uri = "https://careeros-xooj.onrender.com/api/gmail/callback"
 
         from google_auth_oauthlib.flow import Flow
-        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-        if creds_json:
-            creds_info = json.loads(creds_json)
-            flow = Flow.from_client_config(creds_info, scopes=['https://www.googleapis.com/auth/gmail.readonly'], redirect_uri=redirect_uri)
+        creds_json_env = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if creds_json_env:
+            creds_info = json.loads(creds_json_env)
+            flow = Flow.from_client_config(
+                creds_info,
+                scopes=['https://www.googleapis.com/auth/gmail.readonly'],
+                redirect_uri=redirect_uri,
+            )
         else:
-            flow = Flow.from_client_secrets_file('credentials.json', scopes=['https://www.googleapis.com/auth/gmail.readonly'], redirect_uri=redirect_uri)
-            
-        # Restore the PKCE code verifier from the auth-start step
+            flow = Flow.from_client_secrets_file(
+                'credentials.json',
+                scopes=['https://www.googleapis.com/auth/gmail.readonly'],
+                redirect_uri=redirect_uri,
+            )
+
+        # Restore PKCE code verifier from the auth-start step
         if stored_state and stored_state.get('code_verifier'):
             flow.code_verifier = stored_state['code_verifier']
 
@@ -669,26 +738,59 @@ def gmail_callback():
 
         user = get_or_create_user(user_email)
         user.gmail_credentials = json.dumps({
-            'token': creds.token,
+            'token':         creds.token,
             'refresh_token': creds.refresh_token,
-            'token_uri': creds.token_uri,
-            'client_id': creds.client_id,
+            'token_uri':     creds.token_uri,
+            'client_id':     creds.client_id,
             'client_secret': creds.client_secret,
-            'scopes': creds.scopes
+            'scopes':        list(creds.scopes) if creds.scopes else [],
         })
+        # Mark auth state as done in DB
+        user.gmail_auth_state = json.dumps({**stored_state, "status": "done"})
         db.session.commit()
-        
-        _gmail_auth_state[user_email]["status"] = "done"
-        return "<h1>Authentication Successful!</h1><p>You can close this window now.</p><script>window.close();</script>"
+        print(f"[GmailAuth] callback: credentials saved for {user_email}")
+
+        return (
+            "<h1>Authentication Successful!</h1>"
+            "<p>You can close this window now.</p>"
+            "<script>window.close();</script>"
+        )
+
     except Exception as e:
-        _gmail_auth_state[user_email]["status"] = "error"
-        return f"Error: {str(e)}", 500
+        _tb.print_exc()
+        # Mark state as error in DB
+        try:
+            u = get_or_create_user(user_email)
+            u.gmail_auth_state = json.dumps({**stored_state, "status": "error", "message": str(e)})
+            db.session.commit()
+        except Exception:
+            pass
+        return (
+            f"<h1>Authentication Failed</h1><p>{str(e)}</p>"
+            "<p>Please close this window and try again.</p>"
+        ), 500
+
 
 @app.route("/api/gmail/auth-status", methods=["GET"])
 def gmail_auth_status():
+    """Poll endpoint — returns current OAuth state for the requesting user."""
     user_email = get_user_id()
-    state_data = _gmail_auth_state.get(user_email, {"status": "none"})
-    return jsonify(state_data)
+    if not user_email:
+        return jsonify({"status": "none"})
+
+    user = User.query.filter_by(email=user_email).first()
+    if not user or not user.gmail_auth_state:
+        return jsonify({"status": "none"})
+
+    try:
+        state_data = json.loads(user.gmail_auth_state)
+        # Don't expose the raw OAuth state value to the frontend
+        return jsonify({
+            "status":  state_data.get("status", "none"),
+            "message": state_data.get("message", ""),
+        })
+    except Exception:
+        return jsonify({"status": "none"})
 
 @app.route('/api/links/<code>/stats', methods=['GET'])
 def link_stats(code):
@@ -701,64 +803,157 @@ def link_stats(code):
 
 @app.route('/api/gmail/sync', methods=['POST'])
 def gmail_sync():
+    """
+    Gmail sync endpoint — production hardened.
+
+    Improvements over original:
+    - Full [DEBUG] logging at every stage so Render logs show the exact failure
+    - get_gmail_service() now returns (service, updated_creds_json); refreshed
+      tokens are persisted back to the DB immediately
+    - Per-job try/except: one malformed email does NOT abort the entire sync
+    - Safe date parsing: falls back to datetime.utcnow() on any parse failure
+    - Null guard: skips jobs where company or role is missing/empty
+    - Returns {success, added, updated, skipped} for richer frontend feedback
+    """
+    import traceback as _tb
+
     user_email = get_user_id()
+    print(f"[GmailSync] Route called. user_email={user_email!r}")
+
     if not user_email:
         return jsonify({'error': 'Authentication required'}), 401
-    
+
     user = User.query.filter_by(email=user_email).first()
     if not user or not user.gmail_credentials:
+        print("[GmailSync] No stored credentials — needs_auth.")
         return jsonify({'error': 'needs_auth'}), 200
-    
+
     print(f"[GmailSync] Starting extraction for {user_email}...")
     try:
-        service = get_gmail_service(user.gmail_credentials)
+        # ── Build Gmail service ───────────────────────────────────────────────
+        print("[GmailSync] Building Gmail service...")
+        service, updated_creds_json = get_gmail_service(user.gmail_credentials)
+        print("[GmailSync] Gmail service created.")
+
+        # Persist refreshed credentials immediately
+        if updated_creds_json:
+            print("[GmailSync] Persisting refreshed token to DB...")
+            user.gmail_credentials = updated_creds_json
+            db.session.commit()
+            print("[GmailSync] Refreshed token saved.")
+
+        # ── Fetch emails ──────────────────────────────────────────────────────
+        print("[GmailSync] Calling sync_job_emails...")
         new_jobs_data = sync_job_emails(service)
-        added_count = 0
-        
-        print(f"[GmailSync] Extracted {len(new_jobs_data)} candidates. Checking for duplicates...")
+        print(f"[GmailSync] sync_job_emails returned {len(new_jobs_data)} job(s).")
+
+        added_count   = 0
+        updated_count = 0
+        skipped_count = 0
+
+        # ── Process each extracted job ────────────────────────────────────────
         for job_data in new_jobs_data:
-            existing = JobApplication.query.filter_by(
-                user_id=user_email,
-                company=job_data.get('company'),
-                position=job_data.get('role')
-            ).first()
-            
-            if not existing:
-                new_app = JobApplication(
+            try:
+                company = (job_data.get('company') or '').strip()
+                role    = (job_data.get('role')    or '').strip()
+
+                # ── Null guard — skip incomplete records ──────────────────────
+                if not company or not role:
+                    print(
+                        f"[GmailSync] Skipping record with empty company={company!r} "
+                        f"or role={role!r}"
+                    )
+                    skipped_count += 1
+                    continue
+
+                # ── Safe date parsing ─────────────────────────────────────────
+                raw_date   = job_data.get('date')
+                parsed_date = datetime.utcnow()  # safe default
+                if raw_date:
+                    for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%m/%d/%Y', '%d/%m/%Y'):
+                        try:
+                            parsed_date = datetime.strptime(str(raw_date).strip(), fmt)
+                            break
+                        except (ValueError, TypeError):
+                            continue
+                    else:
+                        print(f"[GmailSync] Could not parse date {raw_date!r} — using utcnow()")
+
+                status = (job_data.get('status') or 'Applied').strip()
+
+                # ── Duplicate check ───────────────────────────────────────────
+                existing = JobApplication.query.filter_by(
                     user_id=user_email,
-                    company=job_data.get('company'),
-                    position=job_data.get('role'),
-                    status=job_data.get('status', 'Applied'),
-                    platform=job_data.get('source', 'Gmail'),
-                    applied_date=datetime.strptime(job_data.get('date'), '%Y-%m-%d') if job_data.get('date') else datetime.utcnow()
-                )
-                db.session.add(new_app)
-                added_count += 1
-            else:
-                # Update status if it's different (e.g. from Applied -> Interview)
-                new_status = job_data.get('status', 'Applied')
-                if existing.status != new_status:
-                    print(f"[GmailSync] Updating {existing.company} status: {existing.status} -> {new_status}")
-                    existing.status = new_status
-                    added_count += 1 # Count updates as "synced" items
-        
-        db.session.commit()
-        print(f"[GmailSync] Success! Synced {added_count} items (added or updated).")
-        return jsonify({'success': True, 'added': added_count})
-        
+                    company=company,
+                    position=role,
+                ).first()
+
+                if not existing:
+                    new_app = JobApplication(
+                        user_id      = user_email,
+                        company      = company,
+                        position     = role,
+                        status       = status,
+                        platform     = job_data.get('source', 'Gmail'),
+                        applied_date = parsed_date,
+                    )
+                    db.session.add(new_app)
+                    added_count += 1
+                    print(f"[GmailSync] Added: {company} — {role}")
+                else:
+                    if existing.status != status:
+                        print(
+                            f"[GmailSync] Updating {company} status: "
+                            f"{existing.status!r} -> {status!r}"
+                        )
+                        existing.status = status
+                        updated_count += 1
+
+            except Exception as job_err:
+                print(f"[GmailSync] ERROR processing job record {job_data}: {job_err}")
+                _tb.print_exc()
+                skipped_count += 1
+                # Continue with the next job — do NOT re-raise
+
+        # ── Commit all changes in one transaction ─────────────────────────────
+        try:
+            db.session.commit()
+            print(
+                f"[GmailSync] DB commit successful. "
+                f"added={added_count}, updated={updated_count}, skipped={skipped_count}"
+            )
+        except Exception as commit_err:
+            db.session.rollback()
+            print(f"[GmailSync] DB commit FAILED: {commit_err}")
+            _tb.print_exc()
+            return jsonify({'error': f'Database error during sync: {str(commit_err)}'}), 500
+
+        return jsonify({
+            'success': True,
+            'added':   added_count,
+            'updated': updated_count,
+            'skipped': skipped_count,
+        })
+
     except RuntimeError as e:
-        # Auth/token errors from get_gmail_service — clear credentials and ask user to re-auth
+        # Auth/token errors raised by get_gmail_service()
         err_str = str(e)
-        print(f"[GmailSync] Auth error: {err_str}")
-        needs_reauth_keywords = ["invalid_grant", "refresh_token", "re-auth", "Token refresh failed", "expired"]
-        if any(kw in err_str for kw in needs_reauth_keywords):
+        print(f"[GmailSync] Auth RuntimeError: {err_str}")
+        _tb.print_exc()
+        needs_reauth_keywords = [
+            "invalid_grant", "refresh_token", "re-auth",
+            "Token refresh failed", "expired", "re-authenticate",
+        ]
+        if any(kw.lower() in err_str.lower() for kw in needs_reauth_keywords):
             user.gmail_credentials = None
             db.session.commit()
+            print("[GmailSync] Cleared stale credentials — user must re-auth.")
         return jsonify({'error': 'needs_auth', 'detail': err_str}), 200
+
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        if "invalid_grant" in str(e) or "refresh_token" in str(e):
+        _tb.print_exc()
+        print(f"[GmailSync] Unexpected exception: {e}")
+        if "invalid_grant" in str(e).lower() or "refresh_token" in str(e).lower():
             user.gmail_credentials = None
             db.session.commit()
             return jsonify({'error': 'needs_auth'}), 200
