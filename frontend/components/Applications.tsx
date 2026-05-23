@@ -36,6 +36,7 @@ interface ApplicationsProps {
   handleGmailSync: () => void;
   isSyncing: boolean;
   isSyncSuccess: boolean;
+  syncStatus: { added: number; updated?: number } | null;
 
   handleDragStart: any;
   handleDrop: any;
@@ -69,6 +70,7 @@ export default function Applications(props: ApplicationsProps) {
     handleGmailSync,
     isSyncing,
     isSyncSuccess,
+    syncStatus,
     handleDragStart,
     handleDrop,
     JobCard
@@ -130,7 +132,11 @@ export default function Applications(props: ApplicationsProps) {
             ) : (
               <Zap size={16} />
             )}
-            {isSyncing ? 'Syncing...' : isSyncSuccess ? 'Synced!' : 'Sync Gmail'}
+            {isSyncing
+              ? 'Syncing...'
+              : isSyncSuccess
+              ? `Synced!${(syncStatus as any)?.added > 0 ? ` +${(syncStatus as any).added}` : (syncStatus as any)?.updated > 0 ? ` ↑${(syncStatus as any).updated}` : ''}`
+              : 'Sync Gmail'}
           </button>
 
           {/* FILTER */}

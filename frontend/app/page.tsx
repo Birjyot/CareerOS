@@ -360,12 +360,15 @@ export default function PremiumJobTracker() {
       const updated = data.updated ?? 0;
       const skipped = data.skipped ?? 0;
 
-      setSyncStatus({ added });
+      setSyncStatus({ added, updated } as any);
       setIsSyncSuccess(true);
-      setTimeout(() => setIsSyncSuccess(false), 3000);
+      // Keep the "Synced!" state visible for 8 seconds so the user can see it
+      setTimeout(() => setIsSyncSuccess(false), 8000);
+
+      // Always refresh jobs — even 0 added could mean status updates happened
+      fetchJobs(); fetchStats(); fetchTrends();
 
       if (added > 0 || updated > 0) {
-        fetchJobs();
         const parts = [];
         if (added   > 0) parts.push(`${added} new application${added   !== 1 ? 's' : ''}`);
         if (updated > 0) parts.push(`${updated} status update${updated !== 1 ? 's' : ''}`);
@@ -376,7 +379,7 @@ export default function PremiumJobTracker() {
         });
       } else {
         setNotification({
-          message: 'Sync complete — no new job applications found in Gmail.',
+          message: 'Sync complete — no new job emails matched this time.',
           type:    'info',
         });
       }
@@ -512,6 +515,7 @@ export default function PremiumJobTracker() {
             handleGmailSync={handleGmailSync}
             isSyncing={isSyncing}
             isSyncSuccess={isSyncSuccess}
+            syncStatus={syncStatus}
 
             handleDragStart={handleDragStart}
             handleDrop={handleDrop}          

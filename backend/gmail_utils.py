@@ -107,17 +107,21 @@ def sync_job_emails(service):
     Returns:
         list[dict] — extracted job records (may be empty)
     """
+    # Broad query: any email whose subject suggests a job application event.
+    # We intentionally remove the from: filter so confirmation emails from
+    # company-owned domains (e.g. noreply@acmecorp.com) are also captured.
     query = (
-        "from:(linkedin.com OR internshala.com OR naukri.com OR wellfound.com OR "
-        "greenhouse.io OR lever.co OR workday.com OR jobvite.com OR smartrecruiters.com) "
-        "subject:(application OR applied OR screening OR interview OR offer OR rejected OR "
-        "\"thank you for applying\" OR \"next steps\")"
+        "subject:(\"application received\" OR \"thank you for applying\" OR "
+        "\"application submitted\" OR \"we received your application\" OR "
+        "\"your application\" OR \"next steps\" OR \"interview invitation\" OR "
+        "\"interview request\" OR \"job offer\" OR \"offer letter\" OR "
+        "\"unfortunately\" OR \"not moving forward\" OR applied OR screening)"
     )
 
     print(f"[GmailSync] Executing Gmail search query...")
     try:
         results = service.users().messages().list(
-            userId='me', q=query, maxResults=10  # capped at 10 to stay inside Render timeout
+            userId='me', q=query, maxResults=15  # slightly higher cap for broader query
         ).execute()
     except Exception as e:
         print(f"[GmailSync] Gmail API list() call failed: {e}")
@@ -137,11 +141,19 @@ def sync_job_emails(service):
         msg_id = msg.get('id', 'unknown')
         try:
             print(f"[GmailSync] Fetching email id={msg_id}...")
+            # Use 'full' format so we get both subject headers AND a richer snippet
             msg_data = service.users().messages().get(
-                userId='me', id=msg_id, format='metadata',
+                userId='me', id=msg_id, format='full',
                 metadataHeaders=['Subject', 'From', 'Date']
             ).execute()
             snippet = msg_data.get('snippet', '').strip()
+
+            # Also pull the Subject header to give the AI more context
+            headers = msg_data.get('payload', {}).get('headers', [])
+            subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), '')
+            sender  = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
+            if subject:
+                snippet = f"Subject: {subject}\nFrom: {sender}\n\n{snippet}"
 
             if not snippet:
                 print(f"[GmailSync] Email {msg_id} has empty snippet — skipping.")
