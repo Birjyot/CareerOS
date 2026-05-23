@@ -141,9 +141,10 @@ def sync_job_emails(service):
         msg_id = msg.get('id', 'unknown')
         try:
             print(f"[GmailSync] Fetching email id={msg_id}...")
-            # Use 'full' format so we get both subject headers AND a richer snippet
+            # Use 'metadata' format — returns snippet + headers without downloading
+            # the full base64 email body (which can be MBs and causes timeouts on Render).
             msg_data = service.users().messages().get(
-                userId='me', id=msg_id, format='full',
+                userId='me', id=msg_id, format='metadata',
                 metadataHeaders=['Subject', 'From', 'Date']
             ).execute()
             snippet = msg_data.get('snippet', '').strip()
