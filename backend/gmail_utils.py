@@ -1,186 +1,264 @@
 """
-gmail_utils.py — Production-hardened Gmail integration for CareerOS.
+gmail_utils.py — CareerOS  (rewrite: no per-email AI calls)
 
-Key changes vs original:
-  - get_gmail_service() returns (service, updated_creds_json_or_None)
-    so callers can persist refreshed tokens back to the DB.
-  - sync_job_emails() wraps each email in its own try/except so one
-    malformed message never aborts the entire sync loop.
-  - Full [DEBUG] logging at every stage.
+Changes vs previous version:
+  - Removed per-email AI extraction → replaced with fast regex rules.
+    The old version made up to 15 AI API calls per sync which caused
+    Render's free dyno to time-out mid-request (the real "CORS" crash).
+  - Expanded keyword search to catch direct-company application emails
+    (not just LinkedIn / Internshala).
+  - Hard cap of MAX_EMAILS=10 so the sync always finishes in < 5 s.
+  - get_gmail_service() signature unchanged: returns (service, updated_json|None).
 """
 
-import os
 import json
-import traceback
+import re
 import base64
+import traceback
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from backend.ai_router import ai_router, TaskType
-from backend.text_utils import build_gmail_extract_prompt
-
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+MAX_EMAILS = 10
+
+# ── Gmail search query ────────────────────────────────────────────────────────
+# Broad enough to catch job-board emails AND direct-company emails.
+GMAIL_QUERY = (
+    'subject:('
+    '"application received" OR "thank you for applying" OR '
+    '"application submitted" OR "your application" OR '
+    '"interview invitation" OR "interview request" OR "interview scheduled" OR '
+    '"next steps" OR "moving forward" OR '
+    '"job offer" OR "offer letter" OR "congratulations" OR '
+    '"unfortunately" OR "not selected" OR "not moving forward" OR '
+    '"screening" OR "shortlisted" OR "assessment" OR "test link" OR '
+    '"applied" OR "hiring" OR "trainee" OR "internship"'
+    ')'
+)
+
+# ── Status inference rules (checked in order — first match wins) ──────────────
+_STATUS_RULES = [
+    (re.compile(
+        r'\b(offer letter|job offer|we are pleased|pleased to offer|'
+        r'congratulations.*select|selected for the role|you have been selected)\b', re.I),
+     'Offer'),
+    (re.compile(
+        r'\b(interview|schedule.*call|technical round|assessment|test link|'
+        r'coding round|hiring manager|next round)\b', re.I),
+     'Interview'),
+    (re.compile(
+        r'\b(screening|shortlisted|under review|profile.*shortlisted|'
+        r'next steps|reviewing your application|in consideration)\b', re.I),
+     'Screening'),
+    (re.compile(
+        r'\b(unfortunately|regret|not.*selected|not moving forward|'
+        r'other candidates|will not be moving|no longer considering)\b', re.I),
+     'Rejected'),
+]
+
+def _infer_status(text: str) -> str:
+    for pattern, status in _STATUS_RULES:
+        if pattern.search(text):
+            return status
+    return 'Applied'
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Service builder
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Company + role extraction ─────────────────────────────────────────────────
+
+def _clean(s: str) -> str:
+    return re.sub(r'\s+', ' ', s).strip()
+
+def _extract_company_role(subject: str, sender: str, snippet: str):
+    """Best-effort extraction — returns (company, role) strings."""
+    company = ''
+    role    = ''
+
+    # Pattern: "role at company" or "role @ company"
+    m = re.search(r'(.+?)\s+(?:at|@)\s+(.+)', subject, re.I)
+    if m:
+        role    = _clean(m.group(1))
+        company = _clean(m.group(2))
+        return company, role
+
+    # Pattern: "application for <role>"
+    m = re.search(
+        r'(?:application for|applying for|position[:\s]+|role[:\s]+|job[:\s]+)\s*([^|\-–\n]{3,60})',
+        subject, re.I
+    )
+    if m:
+        role = _clean(m.group(1))
+
+    # Company from sender display name e.g. "ACME Corp <hr@acme.com>"
+    m = re.match(r'^"?([^<"]{2,50})"?\s*<', sender)
+    if m:
+        raw = _clean(m.group(1))
+        generic = re.compile(
+            r'\b(careers|recruiting|talent|hr|jobs|noreply|no-reply|'
+            r'notifications|team|hiring|donotreply)\b', re.I
+        )
+        if not generic.search(raw):
+            company = raw
+
+    # Fallback: company from email domain
+    if not company:
+        m = re.search(r'@([\w.-]+\.[a-z]{2,})', sender)
+        if m:
+            domain = m.group(1).lower()
+            noise  = {'gmail.com','yahoo.com','outlook.com','hotmail.com',
+                      'sendgrid.net','amazonses.com','mailgun.org','noreply.com'}
+            if domain not in noise:
+                company = domain.split('.')[0].title()
+
+    # Last resort: first capitalised word in subject
+    if not company:
+        caps = re.findall(r'\b[A-Z][a-zA-Z]{2,}\b', subject)
+        skip = {'Subject','Application','Interview','Offer','Thank','Your',
+                'We','Hi','Hello','Dear','Please','Update','New'}
+        for c in caps:
+            if c not in skip:
+                company = c
+                break
+
+    # Role fallback: use subject itself (truncated)
+    if not role:
+        role = subject[:80].strip()
+
+    return company, role
+
+
+# ── Date parsing ──────────────────────────────────────────────────────────────
+
+def _parse_date(raw: str) -> str:
+    if not raw:
+        return datetime.utcnow().strftime('%Y-%m-%d')
+    try:
+        dt = parsedate_to_datetime(raw)
+        return dt.strftime('%Y-%m-%d')
+    except Exception:
+        return datetime.utcnow().strftime('%Y-%m-%d')
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Public API
+# ══════════════════════════════════════════════════════════════════════════════
 
 def get_gmail_service(creds_json: str):
     """
-    PRODUCTION: Build a Gmail service from stored JSON credentials (from DB).
+    Build an authenticated Gmail service from stored JSON credentials.
 
-    Returns:
-        (service, updated_creds_json)
-            service            — ready-to-use Gmail API client
-            updated_creds_json — refreshed JSON string if the token was
-                                 refreshed, else None (caller should persist
-                                 updated_creds_json when it is not None)
-
-    Raises:
-        RuntimeError with a descriptive message on any auth failure so the
-        caller can clear stored credentials and ask the user to re-auth.
+    Returns (service, updated_creds_json | None).
+    Raises RuntimeError on any auth failure.
     """
-    print("[GmailService] Loading credentials from DB...")
-
+    print('[GmailService] Loading credentials from DB...')
     if not creds_json:
-        raise RuntimeError("No Gmail credentials stored for this user.")
+        raise RuntimeError('No Gmail credentials stored for this user.')
 
     try:
         creds_data = json.loads(creds_json)
     except Exception as e:
-        raise RuntimeError(f"Stored Gmail credentials are malformed JSON: {e}")
+        raise RuntimeError(f'Stored Gmail credentials are malformed JSON: {e}')
 
     try:
-        # Don't pass scopes here — let it use whatever scopes were granted
-        # during OAuth.  Passing mismatched scopes raises an error even with
-        # perfectly valid tokens.
         creds = Credentials.from_authorized_user_info(creds_data)
     except Exception as e:
-        raise RuntimeError(f"Failed to load Gmail credentials object: {e}")
+        raise RuntimeError(f'Failed to load Gmail credentials object: {e}')
 
-    updated_creds_json = None  # will be set if we refresh
+    updated_creds_json = None
 
     if not creds.valid:
         if creds.expired and creds.refresh_token:
             try:
-                print("[GmailService] Token expired — refreshing...")
+                print('[GmailService] Token expired — refreshing...')
                 creds.refresh(Request())
-                print("[GmailService] Token refreshed successfully.")
-                # Serialize the new token so the caller can persist it
+                print('[GmailService] Token refreshed successfully.')
                 updated_creds_json = creds.to_json()
             except Exception as e:
-                err_str = str(e)
-                print(f"[GmailService] Token refresh FAILED: {err_str}")
-                raise RuntimeError(
-                    f"Token refresh failed (user needs to re-auth): {err_str}"
-                )
+                raise RuntimeError(f'Token refresh failed (re-auth needed): {e}')
         else:
             raise RuntimeError(
-                "Token is invalid and no refresh_token is available. "
-                "User must re-authenticate."
+                'Token invalid and no refresh_token available. User must re-authenticate.'
             )
 
-    try:
-        print("[GmailService] Building Gmail API client...")
-        service = build('gmail', 'v1', credentials=creds)
-        print("[GmailService] Gmail service created successfully.")
-        return service, updated_creds_json
-    except Exception as e:
-        raise RuntimeError(f"Failed to build Gmail API service: {e}")
+    service = build('gmail', 'v1', credentials=creds)
+    print('[GmailService] Gmail service ready.')
+    return service, updated_creds_json
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Email sync
-# ─────────────────────────────────────────────────────────────────────────────
-
-def sync_job_emails(service):
+def sync_job_emails(service) -> list:
     """
-    Search Gmail for job-related emails and extract structured job data via AI.
+    Search Gmail for job emails and return structured dicts — NO AI calls.
 
-    Each email is processed in its own try/except block.  A single malformed
-    or unparseable email is logged and skipped; it does NOT abort the loop.
-
-    Returns:
-        list[dict] — extracted job records (may be empty)
+    Each dict has keys: company, role, status, date, source
     """
-    # Broad query: any email whose subject suggests a job application event.
-    # We intentionally remove the from: filter so confirmation emails from
-    # company-owned domains (e.g. noreply@acmecorp.com) are also captured.
-    query = (
-        "subject:(\"application received\" OR \"thank you for applying\" OR "
-        "\"application submitted\" OR \"we received your application\" OR "
-        "\"your application\" OR \"next steps\" OR \"interview invitation\" OR "
-        "\"interview request\" OR \"job offer\" OR \"offer letter\" OR "
-        "\"unfortunately\" OR \"not moving forward\" OR applied OR screening)"
-    )
+    print('[GmailSync] Starting email search...')
+    extracted = []
 
-    print(f"[GmailSync] Executing Gmail search query...")
     try:
-        results = service.users().messages().list(
-            userId='me', q=query, maxResults=15  # slightly higher cap for broader query
-        ).execute()
+        resp = (
+            service.users().messages()
+            .list(userId='me', q=GMAIL_QUERY, maxResults=MAX_EMAILS)
+            .execute()
+        )
     except Exception as e:
-        print(f"[GmailSync] Gmail API list() call failed: {e}")
+        print(f'[GmailSync] Gmail API list() failed: {e}')
         traceback.print_exc()
         return []
 
-    messages = results.get('messages', [])
-    print(f"[GmailSync] Found {len(messages)} candidate emails.")
+    messages = resp.get('messages', [])
+    print(f'[GmailSync] {len(messages)} candidate email(s) found.')
 
     if not messages:
-        print("[GmailSync] No matching emails found.")
         return []
 
-    extracted_jobs = []
-
-    for msg in messages:
-        msg_id = msg.get('id', 'unknown')
+    for msg_meta in messages:
+        msg_id = msg_meta.get('id', '?')
         try:
-            print(f"[GmailSync] Fetching email id={msg_id}...")
-            # Use 'metadata' format — returns snippet + headers without downloading
-            # the full base64 email body (which can be MBs and causes timeouts on Render).
-            msg_data = service.users().messages().get(
-                userId='me', id=msg_id, format='metadata',
-                metadataHeaders=['Subject', 'From', 'Date']
-            ).execute()
-            snippet = msg_data.get('snippet', '').strip()
-
-            # Also pull the Subject header to give the AI more context
-            headers = msg_data.get('payload', {}).get('headers', [])
-            subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), '')
-            sender  = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
-            if subject:
-                snippet = f"Subject: {subject}\nFrom: {sender}\n\n{snippet}"
-
-            if not snippet:
-                print(f"[GmailSync] Email {msg_id} has empty snippet — skipping.")
-                continue
-
-            print(f"[GmailSync] Extracting job data from email {msg_id}...")
-            prompt = build_gmail_extract_prompt(snippet)
-            result = ai_router.generate_json(prompt, task_type=TaskType.GMAIL_EXTRACT)
-
-            if not result.get('success') or not result.get('data'):
-                print(f"[GmailSync] AI extraction returned no data for {msg_id} — skipping.")
-                continue
-
-            job_data = result['data']
-            job_data['source']  = 'Gmail'
-            job_data['msg_id']  = msg_id
-            extracted_jobs.append(job_data)
-            print(
-                f"[GmailSync] Extracted: company={job_data.get('company')!r} "
-                f"role={job_data.get('role')!r} status={job_data.get('status')!r}"
+            msg = (
+                service.users().messages()
+                .get(
+                    userId='me', id=msg_id,
+                    format='metadata',
+                    metadataHeaders=['Subject', 'From', 'Date']
+                )
+                .execute()
             )
 
-        except Exception as e:
-            print(f"[GmailSync] ERROR processing email {msg_id}: {e}")
-            traceback.print_exc()
-            # Continue with the next email — do NOT re-raise
+            headers = {
+                h['name'].lower(): h['value']
+                for h in msg.get('payload', {}).get('headers', [])
+            }
+            subject = headers.get('subject', '')
+            sender  = headers.get('from',    '')
+            date    = headers.get('date',    '')
+            snippet = msg.get('snippet', '')
 
-    print(f"[GmailSync] Extraction complete. {len(extracted_jobs)} job(s) extracted.")
-    return extracted_jobs
+            combined = f'{subject} {snippet}'
+
+            company, role = _extract_company_role(subject, sender, snippet)
+            status        = _infer_status(combined)
+            parsed_date   = _parse_date(date)
+
+            if not company and not role:
+                print(f'[GmailSync] Could not extract data from email {msg_id} — skipping.')
+                continue
+
+            extracted.append({
+                'company': company,
+                'role':    role,
+                'status':  status,
+                'date':    parsed_date,
+                'source':  'Gmail',
+            })
+            print(f'[GmailSync] ✓ {company!r} | {role!r} | {status}')
+
+        except Exception as e:
+            print(f'[GmailSync] Error on email {msg_id}: {e}')
+            traceback.print_exc()
+            continue
+
+    print(f'[GmailSync] Done — {len(extracted)} job(s) extracted.')
+    return extracted
