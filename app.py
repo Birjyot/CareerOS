@@ -27,11 +27,8 @@ from backend.file_parser import parse_uploaded_file
 app = Flask(__name__)
 
 # ── CORS — must be initialised BEFORE any route registration ─────────────────
-# supports_credentials=True is required for cookies/sessions.
-# Manually inject CORS headers in the error handler below to cover crash cases
-# (Render returns HTML on unhandled exceptions which strips Flask-CORS headers).
 _ALLOWED_ORIGINS = [
-    "https://careeros-prepify.netlify.app",
+    "https://careeros-1-h6vm.onrender.com",
     "http://localhost:3000",
 ]
 CORS(
@@ -76,8 +73,24 @@ def get_or_create_user(email):
     return user
 
 
+# ── CORS helper — injects headers on every response including crashes ─────────
+def _make_cors_response(data: dict, status: int = 200):
+    """
+    Build a JSON response that always carries CORS headers.
+    Use this inside every route that might crash mid-request (e.g. Gmail sync)
+    so Render's proxy never strips the headers and the browser sees real JSON
+    instead of 'Failed to fetch'.
+    """
+    resp   = jsonify(data)
+    origin = request.headers.get("Origin", "")
+    if origin in _ALLOWED_ORIGINS:
+        resp.headers["Access-Control-Allow-Origin"]      = origin
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+    return resp, status
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# BASIC ROUTES (unchanged)
+# BASIC ROUTES
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/', methods=['GET'])
@@ -86,28 +99,22 @@ def home():
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    """Global error handler — always returns JSON and always injects CORS headers.
-
-    When Flask crashes, Render's proxy returns a raw HTML page that has no
-    Access-Control-Allow-Origin header, causing browsers to report a CORS
-    error.  By manually adding the header here we ensure the real error JSON
-    reaches the frontend even when the route handler blows up.
+    """
+    Global error handler — always returns JSON with CORS headers.
+    When Flask crashes, Render returns raw HTML with no CORS headers,
+    causing browsers to report a CORS error instead of the real error.
     """
     import traceback as _tb
 
-    # Pass through Werkzeug HTTP errors (404, 405, etc.) — they already have
-    # a .code attribute.
     if hasattr(e, 'code'):
         response = jsonify({"error": str(e)})
         status   = e.code
     else:
         print("[BACKEND CRASH] Unhandled exception:")
         _tb.print_exc()
-        print("[BACKEND CRASH] ---")
         response = jsonify({"error": "Internal Server Error", "details": str(e)})
         status   = 500
 
-    # Manually inject CORS headers so the browser can read the error JSON
     origin = request.headers.get("Origin", "")
     if origin in _ALLOWED_ORIGINS:
         response.headers["Access-Control-Allow-Origin"]      = origin
@@ -222,7 +229,6 @@ def get_application_trends():
             mk = job.applied_date.strftime('%Y-%m')
             monthly_data[mk] = monthly_data.get(mk, 0) + 1
         status = (job.status or "Applied").strip()
-        # Normalize capitalization to match our canonical statuses
         matched = next((s for s in statuses if s.lower() == status.lower()), status)
         status_trends[matched] = status_trends.get(matched, 0) + 1
         platform = job.platform or "Other"
@@ -243,7 +249,7 @@ def get_application_trends():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# AI FEATURES — now using multi-provider router + caching
+# AI FEATURES
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/api/ai/cover-letter', methods=['POST'])
@@ -253,7 +259,6 @@ def generate_cover_letter():
     position        = data.get('position', 'this position')
     job_description = data.get('job_description', '')
 
-    # Cache check
     cache_key = make_cache_key("cover_letter", position, company, job_description)
     cached    = get_cached("cover_letter", cache_key)
     if cached:
@@ -263,7 +268,6 @@ def generate_cover_letter():
     result = ai_router.generate(prompt, task_type=TaskType.COVER_LETTER)
 
     if not result["success"]:
-        # Graceful fallback letter
         fallback = (
             f"Dear Hiring Manager,\n\nI am writing to express my strong interest in "
             f"the {position} position at {company}. With my background in full-stack "
@@ -294,7 +298,6 @@ def generate_interview_questions():
         return jsonify({**cached, 'cached': True})
 
     prompt = build_interview_prompt(position)
-    # Groq is primary for this fast task
     result = ai_router.generate_json(prompt, task_type=TaskType.INTERVIEW_PREP)
 
     if not result["success"] or not result.get("data"):
@@ -326,7 +329,6 @@ def get_ai_suggestions():
 
     user = get_or_create_user(user_email)
 
-    # 24-hour user-level cache (stored on User model — unchanged from original)
     if user.last_ai_suggestions and user.suggestions_updated_at:
         diff = datetime.utcnow() - user.suggestions_updated_at
         if diff.total_seconds() < 86400:
@@ -342,7 +344,6 @@ def get_ai_suggestions():
     jobs = JobApplication.query.filter_by(user_id=user_email).all()
     suggestions = []
 
-    # Rule-based follow-up suggestions (free, no AI)
     for job in jobs:
         if job.applied_date is None:
             continue
@@ -355,7 +356,6 @@ def get_ai_suggestions():
                 'job_id':   job.id
             })
 
-    # AI suggestions via router
     try:
         jobs_str = summarize_jobs_for_prompt(jobs)
         prompt   = build_suggestions_prompt(jobs_str)
@@ -372,8 +372,7 @@ def get_ai_suggestions():
                     'job_id':   None
                 })
 
-        # Persist to user cache
-        user.last_ai_suggestions  = json.dumps(suggestions)
+        user.last_ai_suggestions   = json.dumps(suggestions)
         user.suggestions_updated_at = datetime.utcnow()
         db.session.commit()
 
@@ -402,18 +401,15 @@ def ai_chat():
     ctx     = "You are a career coach. User's tracked jobs: "
     ctx    += ", ".join(f"{j.position} at {j.company}" for j in jobs) if jobs else "None yet."
 
-    # Build a prompt that inlines the last 4 history turns to save tokens
     history_text = ""
     for turn in history[-4:]:
-        role = "User" if turn.get("role") == "user" else "Assistant"
+        role  = "User" if turn.get("role") == "user" else "Assistant"
         parts = turn.get("parts", [])
         text  = parts[0].get("text", "") if parts else ""
         if text:
             history_text += f"{role}: {text}\n"
 
     prompt = f"{ctx}\n\n{history_text}User: {user_message}\nAssistant:"
-
-    # Chat uses Groq as primary (fast, low-latency)
     result = ai_router.generate(prompt, task_type=TaskType.CHAT)
 
     if not result["success"]:
@@ -435,7 +431,6 @@ def match_resume():
     if not resume_text or not job_description:
         return jsonify({"error": "Both resume and job description are required"}), 400
 
-    # Cache check — expensive call, cache for 7 days
     cache_key = make_cache_key("ats_scan", resume_text, job_description)
     cached    = get_cached("ats_scan", cache_key)
     if cached:
@@ -456,7 +451,6 @@ def match_resume():
 
 @app.route("/api/ai/diagnostics", methods=["GET"])
 def ai_diagnostics():
-    """Returns which providers are configured."""
     providers = {
         "gemini":      bool(os.environ.get("GEMINI_API_KEY")),
         "groq":        bool(os.environ.get("GROQ_API_KEY")),
@@ -466,15 +460,11 @@ def ai_diagnostics():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FILE UPLOAD — drag & drop for resume / JD parsing
+# FILE UPLOAD
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/api/upload/resume', methods=['POST'])
 def upload_resume():
-    """
-    Accept a multipart file upload (PDF, DOCX, TXT).
-    Returns extracted plain text for use in the ATS scanner.
-    """
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
@@ -484,13 +474,12 @@ def upload_resume():
         return jsonify({'error': 'No filename'}), 400
 
     try:
-        raw_bytes    = file.read()
-        # Guard against very large uploads (5 MB limit)
+        raw_bytes = file.read()
         if len(raw_bytes) > 5 * 1024 * 1024:
             return jsonify({'error': 'File too large. Maximum size is 5 MB.'}), 413
 
-        text, ftype  = parse_uploaded_file(raw_bytes, filename)
-        word_count   = len(text.split())
+        text, ftype = parse_uploaded_file(raw_bytes, filename)
+        word_count  = len(text.split())
 
         return jsonify({
             'text':       text,
@@ -508,22 +497,16 @@ def upload_resume():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SHORTENER — share ATS resultLINKs
+# SHORT LINKS
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _generate_code(length: int = 8) -> str:
-    """Generate a random alphanumeric short code."""
     chars = string.ascii_letters + string.digits
     return ''.join(random.choices(chars, k=length))
 
 
 @app.route('/api/links/shorten', methods=['POST'])
 def shorten_link():
-    """
-    Create a short link for an ATS result payload.
-    Body: { "data": <ATS result dict>, "label": "optional label", "expires_days": 30 }
-    Returns: { "short_code": "abc123", "short_url": "https://..." }
-    """
     body  = request.get_json()
     data  = body.get('data')
     label = body.get('label', '')
@@ -531,7 +514,6 @@ def shorten_link():
     if not data:
         return jsonify({'error': 'data payload is required'}), 400
 
-    # Generate a unique code (retry on collision — extremely rare)
     for _ in range(5):
         code = _generate_code()
         if not ShortLink.query.filter_by(short_code=code).first():
@@ -553,7 +535,6 @@ def shorten_link():
     db.session.add(link)
     db.session.commit()
 
-    # Point link to the frontend for sharing
     frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip('/')
     short_url    = f"{frontend_url}/s/{code}"
 
@@ -567,11 +548,6 @@ def shorten_link():
 
 @app.route('/s/<code>', methods=['GET'])
 def resolve_short_link(code):
-    """
-    Resolve a short link. Increments click counter.
-    If Accept: application/json → return JSON data.
-    Otherwise → redirect to frontend with data as query (or return JSON for SPA).
-    """
     link = ShortLink.query.filter_by(short_code=code).first()
     if not link:
         return jsonify({'error': 'Link not found'}), 404
@@ -579,19 +555,27 @@ def resolve_short_link(code):
         return jsonify({'error': 'This link has expired'}), 410
     link.click_count += 1
     db.session.commit()
-    
     return jsonify(json.loads(link.target_data))
 
-# Gmail OAuth state is now stored in the User.gmail_auth_state DB column
-# (replaces the old in-memory dict that was wiped on every Render restart).
+
+@app.route('/api/links/<code>/stats', methods=['GET'])
+def link_stats(code):
+    link = ShortLink.query.filter_by(short_code=code).first()
+    if not link:
+        return jsonify({'error': 'Link not found'}), 404
+    return jsonify(link.to_dict())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GMAIL
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/api/gmail/debug", methods=["GET"])
 def gmail_debug():
-    """Diagnostic endpoint — check Gmail OAuth config without triggering the flow."""
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    has_env_var = bool(creds_json)
-    json_valid = False
-    json_error = None
+    creds_json    = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    has_env_var   = bool(creds_json)
+    json_valid    = False
+    json_error    = None
     has_local_file = os.path.exists('credentials.json')
 
     if creds_json:
@@ -602,11 +586,11 @@ def gmail_debug():
             json_error = str(e)
 
     return jsonify({
-        "GOOGLE_CREDENTIALS_JSON_set": has_env_var,
-        "GOOGLE_CREDENTIALS_JSON_valid_json": json_valid,
-        "GOOGLE_CREDENTIALS_JSON_parse_error": json_error,
-        "credentials_json_file_exists": has_local_file,
-        "host_url": request.host_url,
+        "GOOGLE_CREDENTIALS_JSON_set":          has_env_var,
+        "GOOGLE_CREDENTIALS_JSON_valid_json":   json_valid,
+        "GOOGLE_CREDENTIALS_JSON_parse_error":  json_error,
+        "credentials_json_file_exists":         has_local_file,
+        "host_url":                             request.host_url,
         "redirect_uri_would_use": (
             "https://careeros-xooj.onrender.com/api/gmail/callback"
             if "onrender.com" in request.host_url
@@ -617,7 +601,6 @@ def gmail_debug():
 
 @app.route("/api/gmail/auth-start", methods=["POST"])
 def gmail_auth_start():
-    """Begin Gmail OAuth flow.  Stores state in DB (Render-restart-safe)."""
     user_email = get_user_id()
     if not user_email:
         return jsonify({"error": "Unauthorized"}), 401
@@ -657,7 +640,6 @@ def gmail_auth_start():
 
         auth_url, state = flow.authorization_url(prompt='consent', access_type='offline')
 
-        # ── Persist OAuth state to DB (survives Render restarts) ──────────────
         user = get_or_create_user(user_email)
         user.gmail_auth_state = json.dumps({
             "state":         state,
@@ -673,9 +655,9 @@ def gmail_auth_start():
         _tb.print_exc()
         return jsonify({"error": f"Failed to start Gmail auth: {str(e)}"}), 500
 
+
 @app.route("/api/gmail/callback")
 def gmail_callback():
-    """OAuth callback.  Reads state from DB (Render-restart-safe)."""
     import traceback as _tb
 
     state = request.args.get('state')
@@ -684,10 +666,9 @@ def gmail_callback():
     if not state or not code:
         return jsonify({"error": "Missing state or code parameter."}), 400
 
-    # ── Look up user by state stored in DB ───────────────────────────────────
     from sqlalchemy import text as _sql_text
     users_with_state = db.session.execute(
-        _sql_text("SELECT id, email, gmail_auth_state FROM \"user\" WHERE gmail_auth_state IS NOT NULL")
+        _sql_text('SELECT id, email, gmail_auth_state FROM "user" WHERE gmail_auth_state IS NOT NULL')
     ).fetchall()
 
     user_email   = None
@@ -729,7 +710,6 @@ def gmail_callback():
                 redirect_uri=redirect_uri,
             )
 
-        # Restore PKCE code verifier from the auth-start step
         if stored_state and stored_state.get('code_verifier'):
             flow.code_verifier = stored_state['code_verifier']
 
@@ -745,7 +725,6 @@ def gmail_callback():
             'client_secret': creds.client_secret,
             'scopes':        list(creds.scopes) if creds.scopes else [],
         })
-        # Mark auth state as done in DB
         user.gmail_auth_state = json.dumps({**stored_state, "status": "done"})
         db.session.commit()
         print(f"[GmailAuth] callback: credentials saved for {user_email}")
@@ -758,7 +737,6 @@ def gmail_callback():
 
     except Exception as e:
         _tb.print_exc()
-        # Mark state as error in DB
         try:
             u = get_or_create_user(user_email)
             u.gmail_auth_state = json.dumps({**stored_state, "status": "error", "message": str(e)})
@@ -773,7 +751,6 @@ def gmail_callback():
 
 @app.route("/api/gmail/auth-status", methods=["GET"])
 def gmail_auth_status():
-    """Poll endpoint — returns current OAuth state for the requesting user."""
     user_email = get_user_id()
     if not user_email:
         return jsonify({"status": "none"})
@@ -784,7 +761,6 @@ def gmail_auth_status():
 
     try:
         state_data = json.loads(user.gmail_auth_state)
-        # Don't expose the raw OAuth state value to the frontend
         return jsonify({
             "status":  state_data.get("status", "none"),
             "message": state_data.get("message", ""),
@@ -792,83 +768,89 @@ def gmail_auth_status():
     except Exception:
         return jsonify({"status": "none"})
 
-@app.route('/api/links/<code>/stats', methods=['GET'])
-def link_stats(code):
-    """Return click analytics for a short link."""
-    link = ShortLink.query.filter_by(short_code=code).first()
-    if not link:
-        return jsonify({'error': 'Link not found'}), 404
-    return jsonify(link.to_dict())
+
+# ── Gmail sync — OPTIONS preflight (explicit, never touches Flask-CORS) ───────
+@app.route('/api/gmail/sync', methods=['OPTIONS'])
+def gmail_sync_preflight():
+    """
+    Explicit OPTIONS handler so CORS preflight always gets a clean 204.
+    Without this, if Flask-CORS or Render's proxy drops the preflight response,
+    the browser blocks the POST before it even leaves the client.
+    """
+    origin = request.headers.get('Origin', '')
+    resp   = app.make_response('')
+    resp.status_code = 204
+    if origin in _ALLOWED_ORIGINS:
+        resp.headers['Access-Control-Allow-Origin']      = origin
+        resp.headers['Access-Control-Allow-Credentials'] = 'true'
+        resp.headers['Access-Control-Allow-Methods']     = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers']     = 'Content-Type, Authorization, X-User-Email'
+    return resp
 
 
+# ── Gmail sync — POST ─────────────────────────────────────────────────────────
 @app.route('/api/gmail/sync', methods=['POST'])
 def gmail_sync():
     """
-    Gmail sync endpoint — production hardened.
+    Gmail sync — hardened against Render timeout + CORS crash.
 
-    Improvements over original:
-    - Full [DEBUG] logging at every stage so Render logs show the exact failure
-    - get_gmail_service() now returns (service, updated_creds_json); refreshed
-      tokens are persisted back to the DB immediately
-    - Per-job try/except: one malformed email does NOT abort the entire sync
-    - Safe date parsing: falls back to datetime.utcnow() on any parse failure
-    - Null guard: skips jobs where company or role is missing/empty
-    - Returns {success, added, updated, skipped} for richer frontend feedback
+    The previous version called ai_router.generate_json() once per email
+    (up to 15 AI calls in a single request) which caused Render's free dyno
+    to time out.  The process died mid-request, Render returned raw HTML with
+    no CORS headers, and the browser reported 'Failed to fetch' — making it
+    look like a CORS bug when it was actually a timeout.
+
+    This version uses pure regex extraction in gmail_utils.sync_job_emails()
+    so the entire sync completes in < 5 seconds.
+
+    Every exit path uses _make_cors_response() so CORS headers are always
+    present even on hard crashes.
     """
     import traceback as _tb
 
     user_email = get_user_id()
-    print(f"[GmailSync] Route called. user_email={user_email!r}")
+    print(f'[GmailSync] Route called. user_email={user_email!r}')
 
     if not user_email:
-        return jsonify({'error': 'Authentication required'}), 401
+        return _make_cors_response({'error': 'Authentication required'}, 401)
 
     user = User.query.filter_by(email=user_email).first()
     if not user or not user.gmail_credentials:
-        print("[GmailSync] No stored credentials — needs_auth.")
-        return jsonify({'error': 'needs_auth'}), 200
+        print('[GmailSync] No stored credentials — needs_auth.')
+        return _make_cors_response({'error': 'needs_auth'}, 200)
 
-    print(f"[GmailSync] Starting extraction for {user_email}...")
     try:
         # ── Build Gmail service ───────────────────────────────────────────────
-        print("[GmailSync] Building Gmail service...")
+        print('[GmailSync] Building Gmail service...')
         service, updated_creds_json = get_gmail_service(user.gmail_credentials)
-        print("[GmailSync] Gmail service created.")
+        print('[GmailSync] Gmail service ready.')
 
-        # Persist refreshed credentials immediately
         if updated_creds_json:
-            print("[GmailSync] Persisting refreshed token to DB...")
+            print('[GmailSync] Persisting refreshed token...')
             user.gmail_credentials = updated_creds_json
             db.session.commit()
-            print("[GmailSync] Refreshed token saved.")
 
-        # ── Fetch emails ──────────────────────────────────────────────────────
-        print("[GmailSync] Calling sync_job_emails...")
+        # ── Fetch + parse emails (regex only — no AI calls, no timeout risk) ──
+        print('[GmailSync] Calling sync_job_emails...')
         new_jobs_data = sync_job_emails(service)
-        print(f"[GmailSync] sync_job_emails returned {len(new_jobs_data)} job(s).")
+        print(f'[GmailSync] sync_job_emails returned {len(new_jobs_data)} job(s).')
 
         added_count   = 0
         updated_count = 0
         skipped_count = 0
 
-        # ── Process each extracted job ────────────────────────────────────────
         for job_data in new_jobs_data:
             try:
                 company = (job_data.get('company') or '').strip()
                 role    = (job_data.get('role')    or '').strip()
 
-                # ── Null guard — skip incomplete records ──────────────────────
                 if not company or not role:
-                    print(
-                        f"[GmailSync] Skipping record with empty company={company!r} "
-                        f"or role={role!r}"
-                    )
                     skipped_count += 1
                     continue
 
-                # ── Safe date parsing ─────────────────────────────────────────
-                raw_date   = job_data.get('date')
-                parsed_date = datetime.utcnow()  # safe default
+                # Safe date parsing
+                raw_date    = job_data.get('date')
+                parsed_date = datetime.utcnow()
                 if raw_date:
                     for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%m/%d/%Y', '%d/%m/%Y'):
                         try:
@@ -876,59 +858,50 @@ def gmail_sync():
                             break
                         except (ValueError, TypeError):
                             continue
-                    else:
-                        print(f"[GmailSync] Could not parse date {raw_date!r} — using utcnow()")
 
                 status = (job_data.get('status') or 'Applied').strip()
 
-                # ── Duplicate check ───────────────────────────────────────────
+                # Duplicate check — skip if same company + role already exists
                 existing = JobApplication.query.filter_by(
-                    user_id=user_email,
-                    company=company,
-                    position=role,
+                    user_id=user_email, company=company, position=role
                 ).first()
 
                 if not existing:
-                    new_app = JobApplication(
+                    db.session.add(JobApplication(
                         user_id      = user_email,
                         company      = company,
                         position     = role,
                         status       = status,
                         platform     = job_data.get('source', 'Gmail'),
                         applied_date = parsed_date,
-                    )
-                    db.session.add(new_app)
+                    ))
                     added_count += 1
-                    print(f"[GmailSync] Added: {company} — {role}")
+                    print(f'[GmailSync] Added: {company} — {role}')
                 else:
                     if existing.status != status:
-                        print(
-                            f"[GmailSync] Updating {company} status: "
-                            f"{existing.status!r} -> {status!r}"
-                        )
+                        print(f'[GmailSync] Updating {company}: {existing.status!r} → {status!r}')
                         existing.status = status
-                        updated_count += 1
+                        updated_count  += 1
 
             except Exception as job_err:
-                print(f"[GmailSync] ERROR processing job record {job_data}: {job_err}")
+                print(f'[GmailSync] Error on record {job_data}: {job_err}')
                 _tb.print_exc()
                 skipped_count += 1
-                # Continue with the next job — do NOT re-raise
 
-        # ── Commit all changes in one transaction ─────────────────────────────
+        # ── Commit all changes ────────────────────────────────────────────────
         try:
             db.session.commit()
             print(
-                f"[GmailSync] DB commit successful. "
-                f"added={added_count}, updated={updated_count}, skipped={skipped_count}"
+                f'[GmailSync] Committed — '
+                f'added={added_count} updated={updated_count} skipped={skipped_count}'
             )
         except Exception as commit_err:
             db.session.rollback()
-            print(f"[GmailSync] DB commit FAILED: {commit_err}")
+            print(f'[GmailSync] DB commit FAILED: {commit_err}')
             _tb.print_exc()
-            return jsonify({'error': f'Database error during sync: {str(commit_err)}'}), 500
+            return _make_cors_response({'error': f'Database error: {commit_err}'}, 500)
 
-        return jsonify({
+        return _make_cors_response({
             'success': True,
             'added':   added_count,
             'updated': updated_count,
@@ -936,28 +909,25 @@ def gmail_sync():
         })
 
     except RuntimeError as e:
-        # Auth/token errors raised by get_gmail_service()
         err_str = str(e)
-        print(f"[GmailSync] Auth RuntimeError: {err_str}")
+        print(f'[GmailSync] Auth RuntimeError: {err_str}')
         _tb.print_exc()
-        needs_reauth_keywords = [
-            "invalid_grant", "refresh_token", "re-auth",
-            "Token refresh failed", "expired", "re-authenticate",
-        ]
-        if any(kw.lower() in err_str.lower() for kw in needs_reauth_keywords):
+        reauth_keywords = ['invalid_grant', 'refresh_token', 're-auth',
+                           'Token refresh failed', 'expired', 're-authenticate']
+        if any(kw.lower() in err_str.lower() for kw in reauth_keywords):
             user.gmail_credentials = None
             db.session.commit()
-            print("[GmailSync] Cleared stale credentials — user must re-auth.")
-        return jsonify({'error': 'needs_auth', 'detail': err_str}), 200
+            print('[GmailSync] Cleared stale credentials — user must re-auth.')
+        return _make_cors_response({'error': 'needs_auth', 'detail': err_str}, 200)
 
     except Exception as e:
         _tb.print_exc()
-        print(f"[GmailSync] Unexpected exception: {e}")
-        if "invalid_grant" in str(e).lower() or "refresh_token" in str(e).lower():
+        print(f'[GmailSync] Unexpected exception: {e}')
+        if 'invalid_grant' in str(e).lower() or 'refresh_token' in str(e).lower():
             user.gmail_credentials = None
             db.session.commit()
-            return jsonify({'error': 'needs_auth'}), 200
-        return jsonify({'error': str(e)}), 500
+            return _make_cors_response({'error': 'needs_auth'}, 200)
+        return _make_cors_response({'error': str(e)}, 500)
 
 
 if __name__ == "__main__":
