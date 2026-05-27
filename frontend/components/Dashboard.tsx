@@ -16,6 +16,25 @@ interface DashboardProps {
   onTakeAction: (jobId: number | null) => void;
 }
 
+// ── Shared animation config ───────────────────────────────────────────────────
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+const container = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.06, delayChildren: 0.05 },
+  },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.45, ease: EASE },
+  },
+};
+
 export default function Dashboard({
   activeName,
   session,
@@ -24,19 +43,25 @@ export default function Dashboard({
   syncStatus,
   setSyncStatus,
   STATUSES,
-  onTakeAction
+  onTakeAction,
 }: DashboardProps) {
-
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <motion.div
+      className="space-y-8"
+      variants={container}
+      initial="hidden"
+      animate="show"
+    >
+      {/* ── HEADER ── */}
+      <motion.div
+        variants={item}
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4"
+      >
         <div>
           <h2 className="text-3xl font-black text-white tracking-tight">
             Welcome back, {activeName?.split(' ')[0]}
           </h2>
-          <p className="text-white/70">
+          <p className="text-white/60 mt-1">
             Here's what's happening with your applications.
           </p>
         </div>
@@ -45,41 +70,46 @@ export default function Dashboard({
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.3, ease: EASE }}
             className="p-2 pl-4 rounded-2xl flex items-center gap-4"
             style={{
               background: 'rgba(255,255,255,0.08)',
               backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(255,255,255,0.1)'
+              border: '1px solid rgba(255,255,255,0.1)',
             }}
           >
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-ping" />
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
               <p className="text-xs font-bold text-white/80">
-                {syncStatus.added > 0 ? `${syncStatus.added} New Jobs Found` : "Gmail Synced"}
+                {syncStatus.added > 0 ? `${syncStatus.added} New Jobs Found` : 'Gmail Synced'}
               </p>
             </div>
-
             <button
               onClick={() => setSyncStatus(null)}
-              className="p-2 rounded-xl hover:bg-white/10 transition"
+              className="p-2 rounded-xl hover:bg-white/10 transition-colors"
             >
               <X size={14} className="text-white/50" />
             </button>
           </motion.div>
         )}
-      </div>
+      </motion.div>
 
-      {/* AI INSIGHTS */}
+      {/* ── AI INSIGHTS ── */}
       {aiSuggestions.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <motion.div variants={item} className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {aiSuggestions.slice(0, 3).map((s, i) => (
             <motion.div
               key={i}
-              className="p-6 rounded-[20px] flex flex-col justify-between"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease: EASE, delay: i * 0.07 }}
+              whileHover={{ y: -4, transition: { duration: 0.2 } }}
+              className="p-6 rounded-[20px] flex flex-col justify-between cursor-default"
               style={{
                 background: 'rgba(255,255,255,0.06)',
                 backdropFilter: 'blur(25px)',
-                border: '1px solid rgba(255,255,255,0.08)'
+                border: '1px solid rgba(255,255,255,0.08)',
               }}
             >
               <div className="flex items-start justify-between mb-4">
@@ -92,7 +122,6 @@ export default function Dashboard({
                 >
                   <Sparkles size={18} />
                 </div>
-
                 <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">
                   Insight {i + 1}
                 </span>
@@ -102,7 +131,7 @@ export default function Dashboard({
                 {s.message}
               </p>
 
-              <div 
+              <div
                 onClick={() => onTakeAction(s.job_id)}
                 className="mt-4 pt-4 border-t border-white/10 cursor-pointer flex items-center gap-2 text-blue-400 text-xs font-bold hover:text-blue-300 transition-colors"
               >
@@ -110,12 +139,12 @@ export default function Dashboard({
               </div>
             </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
-      {/* MAIN ANALYTICS */}
+      {/* ── MAIN ANALYTICS ── */}
       {stats && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <motion.div variants={item} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
           {/* CHART */}
           <div
@@ -123,7 +152,7 @@ export default function Dashboard({
             style={{
               background: 'rgba(255,255,255,0.05)',
               backdropFilter: 'blur(40px)',
-              border: '1px solid rgba(255,255,255,0.08)'
+              border: '1px solid rgba(255,255,255,0.08)',
             }}
           >
             <div className="flex items-center justify-between mb-8">
@@ -131,11 +160,10 @@ export default function Dashboard({
                 Application Pipeline
               </h3>
             </div>
-
             <StatsChart
-              data={STATUSES.map(s => ({
+              data={STATUSES.map((s) => ({
                 name: s,
-                value: stats.by_status[s] || 0
+                value: stats.by_status[s] || 0,
               }))}
               height="h-[300px]"
             />
@@ -144,23 +172,26 @@ export default function Dashboard({
           {/* METRICS */}
           <div className="lg:col-span-4 grid grid-cols-1 gap-4">
             {[
-              { label: 'Total Tracked', value: stats.total, icon: Target },
-              { label: 'Active Interviews', value: stats.by_status.Interview, icon: Calendar },
-              { label: 'Success Rate', value: `${stats.response_rate}%`, icon: TrendingUp },
+              { label: 'Total Tracked',     value: stats.total,                  icon: Target },
+              { label: 'Active Interviews', value: stats.by_status.Interview,     icon: Calendar },
+              { label: 'Success Rate',      value: `${stats.response_rate}%`,    icon: TrendingUp },
             ].map((s, i) => (
               <motion.div
                 key={i}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: EASE, delay: 0.1 + i * 0.07 }}
+                whileHover={{ y: -3, transition: { duration: 0.18 } }}
                 className="p-6 rounded-[15px] flex items-center gap-5"
                 style={{
                   background: 'rgba(255,255,255,0.06)',
                   backdropFilter: 'blur(25px)',
-                  border: '1px solid rgba(255,255,255,0.08)'
+                  border: '1px solid rgba(255,255,255,0.08)',
                 }}
               >
-                <div className="w-14 h-14 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center">
+                <div className="w-14 h-14 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center border border-blue-500/20">
                   <s.icon size={24} />
                 </div>
-
                 <div>
                   <div className="text-2xl font-black text-white leading-none">
                     {s.value}
@@ -177,64 +208,63 @@ export default function Dashboard({
               className="p-6 rounded-[15px] text-white relative overflow-hidden"
               style={{
                 background: 'linear-gradient(135deg, #050c2bff, #0F172A)',
-                border: '1px solid rgba(255,255,255,0.06)'
+                border: '1px solid rgba(255,255,255,0.06)',
               }}
             >
               <div className="relative z-10">
                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">
                   Pro Feature
                 </p>
-
                 <p className="text-sm font-bold leading-snug">
                   Unlock deeper market insights & salary benchmarking.
                 </p>
               </div>
-
               <Zap className="absolute -right-4 -bottom-4 w-24 h-24 text-white/5 rotate-12" />
             </div>
-
           </div>
-        </div>
+        </motion.div>
       )}
 
-      {/* SIGNED OUT */}
+      {/* ── SIGNED OUT ── */}
       {!session && (
-        <div
+        <motion.div
+          variants={item}
           className="relative py-24 rounded-[48px] flex flex-col items-center text-center overflow-hidden"
           style={{
             background: 'rgba(255,255,255,0.05)',
             backdropFilter: 'blur(60px)',
-            border: '1px solid rgba(255,255,255,0.08)'
+            border: '1px solid rgba(255,255,255,0.08)',
           }}
         >
-          <div className="absolute w-[500px] h-[500px] bg-blue-500/10 blur-[120px] rounded-full" />
+          <div className="absolute w-[500px] h-[500px] bg-blue-500/10 blur-[120px] rounded-full pointer-events-none" />
 
           <div className="relative z-10 max-w-md">
-            <div className="w-20 h-20 bg-blue-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8">
+            <div className="w-20 h-20 bg-blue-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-500/20">
               <Briefcase size={40} className="text-blue-400" />
             </div>
 
             <h2 className="text-4xl font-black text-white mb-4">
-              Your Career
+              Your Career, Reimagined
             </h2>
 
             <p className="text-white/60 mb-10">
-              Join thousands of professionals using AI to manage their job search pipeline.
+              Sign in to start tracking applications and unlock AI-powered career tools.
             </p>
 
             <button
               onClick={() => signIn('google')}
-              className="px-10 py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all"
+              className="px-10 py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all hover:scale-105 active:scale-95"
               style={{
                 background: '#0F52BA',
-                color: '#fff'
+                color: '#fff',
+                boxShadow: '0 0 28px rgba(15,82,186,0.5)',
               }}
             >
               Get Started Free
             </button>
           </div>
-        </div>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }

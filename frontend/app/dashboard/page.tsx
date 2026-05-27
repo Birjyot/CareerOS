@@ -2,7 +2,8 @@
 
 import { AlertCircle, Info, Sparkles, X} from 'lucide-react';
 import { signIn, signOut, useSession } from 'next-auth/react';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import ShareResultButton from '../../components/ShareResultButton';
 import JobCard from '../../components/JobCard';
@@ -66,9 +67,9 @@ const statusBarColors: Record<string, string> = {
   Rejected: 'bg-red-500',
 };
 
-export default function PremiumJobTracker() {
+function PremiumJobTrackerContent() {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const [impersonatedUser, setImpersonatedUser] = useState<{ name: string; email: string; image?: string; } | null>(null);
   
   // Use impersonated email if set, otherwise real session email
@@ -77,8 +78,10 @@ export default function PremiumJobTracker() {
   const activeName = activeUser?.name || '';
   const activeImage = activeUser?.image || '';
 
+  const searchParams = useSearchParams();
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const initialTab = searchParams.get('tab') || 'dashboard';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState('All');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
@@ -411,6 +414,7 @@ export default function PremiumJobTracker() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         session={session}
+        sessionStatus={sessionStatus}
         activeName={activeName}
         activeEmail={activeEmail}
         activeImage={activeImage}
@@ -466,96 +470,132 @@ export default function PremiumJobTracker() {
         )}
       </AnimatePresence>
 
-      <div className="max-w-[1400px] mx-auto px-4 py-10 ">
-        {/* ── DASHBOARD ── */}
-        {activeTab === 'dashboard' && (
-          <Dashboard
-            activeName={activeName}
-            session={session}
-            stats={stats}
-            aiSuggestions={aiSuggestions}
-            syncStatus={syncStatus}
-            setSyncStatus={setSyncStatus}
-            STATUSES={STATUSES}
-            onTakeAction={() => {}}
-          />
-        )}
+      <div className="max-w-[1400px] mx-auto px-4 py-10">
+        <AnimatePresence mode="wait" initial={false}>
 
-        {/* ── APPLICATIONS ── */}
-        {activeTab === 'applications' && (
-          <Applications
-            jobs={jobs}
-            filteredJobs={filteredJobs}
-            STATUSES={STATUSES}
-            statusStyles={statusStyles}
-            statusBorderColors={statusBorderColors}   // ✅ added
-
-            showForm={showForm}
-            setShowForm={setShowForm}
-            editingJob={editingJob}
-            formData={formData}
-            setFormData={setFormData}
-
-            handleSubmit={handleSubmit}
-            resetForm={resetForm}
-            handleDelete={handleDelete}
-            handleEdit={handleEdit}
-
-            generateCoverLetter={generateCoverLetter}
-            generateInterviewQuestions={generateInterviewQuestions}
-
-            filter={filter}
-            setFilter={setFilter}
-
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-
-            exportCSV={exportCSV}
-
-            handleGmailSync={handleGmailSync}
-            isSyncing={isSyncing}
-            isSyncSuccess={isSyncSuccess}
-            syncStatus={syncStatus}
-
-            handleDragStart={handleDragStart}
-            handleDrop={handleDrop}          
-            JobCard={JobCard}                
-          />
-        )}
-
-        {/* ── AI TOOLS ── */}
-        {activeTab === 'ai-tools' && (
-          <AITools
-            activeAiView={activeAiView}
-            setActiveAiView={setActiveAiView}
-
-            chatMessages={chatMessages}
-            chatInput={chatInput}
-            setChatInput={setChatInput}
-            handleChatSend={handleChatSend}
-            isChatLoading={isChatLoading}
-            chatProvider={chatProvider}
-
-            resumeText={resumeText}
-            setResumeText={setResumeText}
-            jobDescription={jobDescription}
-            setJobDescription={setJobDescription}
-            handleATSScan={handleATSScan}
-            isMatchLoading={isMatchLoading}
-            matchResult={matchResult}
-
-            API_BASE_URL={API_BASE_URL}
-            authHeaders={authHeaders}
-            />
+          {/* ── DASHBOARD ── */}
+          {activeTab === 'dashboard' && (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Dashboard
+                activeName={activeName}
+                session={session}
+                stats={stats}
+                aiSuggestions={aiSuggestions}
+                syncStatus={syncStatus}
+                setSyncStatus={setSyncStatus}
+                STATUSES={STATUSES}
+                onTakeAction={() => {}}
+              />
+            </motion.div>
           )}
 
-        {/* ── ANALYTICS ── */}
-        {activeTab === 'analytics' && (
-          <Analytics
-            trends={trends}
-            STATUSES={STATUSES}
-          />
-        )}
+          {/* ── APPLICATIONS ── */}
+          {activeTab === 'applications' && (
+            <motion.div
+              key="applications"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Applications
+                jobs={jobs}
+                filteredJobs={filteredJobs}
+                STATUSES={STATUSES}
+                statusStyles={statusStyles}
+                statusBorderColors={statusBorderColors}
+
+                showForm={showForm}
+                setShowForm={setShowForm}
+                editingJob={editingJob}
+                formData={formData}
+                setFormData={setFormData}
+
+                handleSubmit={handleSubmit}
+                resetForm={resetForm}
+                handleDelete={handleDelete}
+                handleEdit={handleEdit}
+
+                generateCoverLetter={generateCoverLetter}
+                generateInterviewQuestions={generateInterviewQuestions}
+
+                filter={filter}
+                setFilter={setFilter}
+
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+
+                exportCSV={exportCSV}
+
+                handleGmailSync={handleGmailSync}
+                isSyncing={isSyncing}
+                isSyncSuccess={isSyncSuccess}
+                syncStatus={syncStatus}
+
+                handleDragStart={handleDragStart}
+                handleDrop={handleDrop}
+                JobCard={JobCard}
+              />
+            </motion.div>
+          )}
+
+          {/* ── AI TOOLS ── */}
+          {activeTab === 'ai-tools' && (
+            <motion.div
+              key="ai-tools"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <AITools
+                activeAiView={activeAiView}
+                setActiveAiView={setActiveAiView}
+
+                chatMessages={chatMessages}
+                chatInput={chatInput}
+                setChatInput={setChatInput}
+                handleChatSend={handleChatSend}
+                isChatLoading={isChatLoading}
+                chatProvider={chatProvider}
+
+                resumeText={resumeText}
+                setResumeText={setResumeText}
+                jobDescription={jobDescription}
+                setJobDescription={setJobDescription}
+                handleATSScan={handleATSScan}
+                isMatchLoading={isMatchLoading}
+                matchResult={matchResult}
+
+                API_BASE_URL={API_BASE_URL}
+                authHeaders={authHeaders}
+              />
+            </motion.div>
+          )}
+
+          {/* ── ANALYTICS ── */}
+          {activeTab === 'analytics' && (
+            <motion.div
+              key="analytics"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Analytics
+                trends={trends}
+                STATUSES={STATUSES}
+              />
+            </motion.div>
+          )}
+
+        </AnimatePresence>
 
         {/* Cover Letter Modal */}
         {showCoverLetter && (
@@ -657,5 +697,17 @@ export default function PremiumJobTracker() {
         </span>
       </a>
     </div>
+  );
+}
+
+export default function PremiumJobTracker() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#050814] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <PremiumJobTrackerContent />
+    </Suspense>
   );
 }

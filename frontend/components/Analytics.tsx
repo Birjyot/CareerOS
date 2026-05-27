@@ -8,68 +8,88 @@ interface AnalyticsProps {
   STATUSES: string[];
 }
 
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+const container = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.04 } },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: EASE } },
+};
+
 export default function Analytics({ trends, STATUSES }: AnalyticsProps) {
 
   if (!trends || trends.metrics.total_applications === 0) {
     return (
-      <div
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE }}
         className="rounded-[40px] p-20 text-center"
         style={{
           background: 'rgba(255,255,255,0.05)',
           backdropFilter: 'blur(60px)',
-          border: '1px solid rgba(255,255,255,0.08)'
+          border: '1px solid rgba(255,255,255,0.08)',
         }}
       >
         <TrendingUp size={50} className="text-white/30 mx-auto mb-4" />
         <h3 className="text-2xl font-bold text-white mb-2">No Data Yet</h3>
         <p className="text-white/50">Add applications to unlock insights</p>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <motion.div
+      className="space-y-8"
+      variants={container}
+      initial="hidden"
+      animate="show"
+    >
+      {/* ── HEADER ── */}
+      <motion.div variants={item}>
+        <h2 className="text-3xl font-black text-white tracking-tight">Analytics Overview</h2>
+        <p className="text-white/60 mt-1">Deep insights into your job search</p>
+      </motion.div>
 
-      {/* HEADER */}
-      <div>
-        <h2 className="text-3xl font-black text-white tracking-tight">
-          Analytics Overview
-        </h2>
-        <p className="text-white/60">Deep insights into your job search</p>
-      </div>
-
-      {/* METRICS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      {/* ── METRICS ROW ── */}
+      <motion.div variants={item} className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {[
           { label: 'Total Applications', value: trends.metrics.total_applications, icon: Target },
-          { label: 'Interview Rate', value: `${trends.metrics.interview_rate}%`, icon: Zap },
-          { label: 'Offer Rate', value: `${trends.metrics.offer_rate}%`, icon: TrendingUp },
-        ].map((item, i) => (
+          { label: 'Interview Rate',      value: `${trends.metrics.interview_rate}%`, icon: Zap },
+          { label: 'Offer Rate',          value: `${trends.metrics.offer_rate}%`,     icon: TrendingUp },
+        ].map((m, i) => (
           <motion.div
             key={i}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: EASE, delay: 0.06 + i * 0.07 }}
+            whileHover={{ y: -4, transition: { duration: 0.18 } }}
             className="p-6 rounded-[28px] flex items-center gap-5"
             style={{
               background: 'rgba(255,255,255,0.06)',
               backdropFilter: 'blur(25px)',
-              border: '1px solid rgba(255,255,255,0.08)'
+              border: '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            <div className="w-14 h-14 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center">
-              <item.icon size={24} />
+            <div className="w-14 h-14 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center border border-blue-500/20">
+              <m.icon size={24} />
             </div>
-
             <div>
-              <div className="text-2xl font-black text-white">{item.value}</div>
-              <div className="text-xs font-bold text-white/40 uppercase tracking-widest">
-                {item.label}
+              <div className="text-2xl font-black text-white">{m.value}</div>
+              <div className="text-xs font-bold text-white/40 uppercase tracking-widest mt-1">
+                {m.label}
               </div>
             </div>
           </motion.div>
         ))}
-      </div>
+      </motion.div>
 
-      {/* MAIN GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* ── MAIN GRID ── */}
+      <motion.div variants={item} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* FUNNEL */}
         <div
@@ -77,7 +97,7 @@ export default function Analytics({ trends, STATUSES }: AnalyticsProps) {
           style={{
             background: 'rgba(255,255,255,0.05)',
             backdropFilter: 'blur(40px)',
-            border: '1px solid rgba(255,255,255,0.08)'
+            border: '1px solid rgba(255,255,255,0.08)',
           }}
         >
           <div className="flex items-center gap-3 mb-6">
@@ -87,23 +107,22 @@ export default function Analytics({ trends, STATUSES }: AnalyticsProps) {
 
           <div className="space-y-5">
             {STATUSES.map((status, i) => {
-              const count = trends.status_distribution[status] || 0;
-              const total = trends.metrics.total_applications;
+              const count   = trends.status_distribution[status] || 0;
+              const total   = trends.metrics.total_applications;
               const percent = total > 0 ? Math.round((count / total) * 100) : 0;
 
               return (
                 <div key={i}>
-                  <div className="flex justify-between text-sm mb-1">
+                  <div className="flex justify-between text-sm mb-2">
                     <span className="text-white/70 font-semibold">{status}</span>
                     <span className="text-white/40">{count} ({percent}%)</span>
                   </div>
-
                   <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${percent}%` }}
-                      transition={{ duration: 1 }}
-                      className="h-full bg-gradient-to-r from-blue-400 to-indigo-500"
+                      transition={{ duration: 0.9, delay: 0.2 + i * 0.08, ease: EASE }}
+                      className="h-full bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full"
                     />
                   </div>
                 </div>
@@ -121,25 +140,22 @@ export default function Analytics({ trends, STATUSES }: AnalyticsProps) {
             style={{
               background: 'rgba(255,255,255,0.05)',
               backdropFilter: 'blur(40px)',
-              border: '1px solid rgba(255,255,255,0.08)'
+              border: '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            <h3 className="text-lg font-bold text-white mb-6">
-              Platform Distribution
-            </h3>
-
+            <h3 className="text-lg font-bold text-white mb-6">Platform Distribution</h3>
             <div className="grid grid-cols-2 gap-4">
               {Object.entries(trends.platform_distribution || {}).map(([p, c]) => (
                 <div
                   key={p}
-                  className="p-4 rounded-xl text-center"
+                  className="p-4 rounded-xl text-center transition-colors hover:bg-white/5"
                   style={{
                     background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.06)'
+                    border: '1px solid rgba(255,255,255,0.06)',
                   }}
                 >
                   <div className="text-xl font-bold text-white">{c as number}</div>
-                  <div className="text-xs text-white/40 uppercase">{p}</div>
+                  <div className="text-xs text-white/40 uppercase mt-1">{p}</div>
                 </div>
               ))}
             </div>
@@ -150,74 +166,68 @@ export default function Analytics({ trends, STATUSES }: AnalyticsProps) {
             className="p-6 rounded-[32px] text-white relative overflow-hidden"
             style={{
               background: 'linear-gradient(135deg, #020617, #0F172A)',
-              border: '1px solid rgba(255,255,255,0.06)'
+              border: '1px solid rgba(255,255,255,0.06)',
             }}
           >
             <div className="relative z-10">
               <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center mb-4 border border-blue-500/30">
                 <Sparkles size={18} className="text-blue-400" />
               </div>
-
               <h4 className="font-bold text-lg mb-2">Strategy Insight</h4>
-
-              <p className="text-xs text-white/50">
+              <p className="text-xs text-white/50 leading-relaxed">
                 Your interview rate is {trends.metrics.interview_rate}% — focus on
                 {` ${Object.keys(trends.platform_distribution)[0] || ' top platforms'}`} for better ROI.
               </p>
             </div>
-
-            <div className="absolute -top-12 -right-12 w-48 h-48 bg-blue-500 blur-[100px] opacity-20" />
+            <div className="absolute -top-12 -right-12 w-48 h-48 bg-blue-500 blur-[100px] opacity-20 pointer-events-none" />
           </div>
-
         </div>
-      </div>
+      </motion.div>
 
-      {/* MONTHLY TREND */}
-      <div
+      {/* ── MONTHLY TREND ── */}
+      <motion.div
+        variants={item}
         className="p-8 rounded-[32px]"
         style={{
           background: 'rgba(255,255,255,0.05)',
           backdropFilter: 'blur(40px)',
-          border: '1px solid rgba(255,255,255,0.08)'
+          border: '1px solid rgba(255,255,255,0.08)',
         }}
       >
-        <h3 className="text-lg font-bold text-white mb-6">
-          Monthly Applications
-        </h3>
-        <div className="flex items-end gap-6 h-56">
+        <h3 className="text-lg font-bold text-white mb-6">Monthly Applications</h3>
+        <div className="flex items-end gap-4 lg:gap-6 h-56">
           {(() => {
-            const values = Object.values(trends.monthly_applications || {}).map(v => Number(v) || 0);
-            const max = Math.max(...values, 1);
+            const values = Object.values(trends.monthly_applications || {}).map((v) => Number(v) || 0);
+            const max    = Math.max(...values, 1);
             return Object.entries(trends.monthly_applications || {}).map(([month, count], i) => {
               const safeCount = Number(count) || 0;
-              const height = Math.max((safeCount / max) * 100, 8);
+              const height    = Math.max((safeCount / max) * 100, 6);
               return (
                 <div key={month} className="flex-1 flex flex-col items-center group">
                   <div className="relative w-full flex justify-center items-end h-48">
                     <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${height}%` }}
-                      transition={{ duration: 1.2, delay: i * 0.08 }}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: `${height}%`, opacity: 1 }}
+                      transition={{ duration: 0.75, delay: 0.1 + i * 0.06, ease: EASE }}
                       className="w-10 rounded-2xl bg-gradient-to-t from-blue-600 via-blue-500 to-blue-400"
+                      style={{ willChange: 'height, opacity' }}
                     />
-
-                    <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition">
-                      <div className="bg-[#020617] text-white px-3 py-1 rounded-lg text-xs shadow-lg border border-white/10">
-                        {safeCount} jobs
+                    {/* Tooltip */}
+                    <div className="absolute -top-9 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
+                      <div className="bg-[#020617] text-white px-3 py-1.5 rounded-lg text-xs shadow-lg border border-white/10 whitespace-nowrap">
+                        {safeCount} job{safeCount !== 1 ? 's' : ''}
                       </div>
                     </div>
                   </div>
                   <span className="text-xs text-white/40 mt-3 font-medium">
                     {month.substring(0, 3)}
                   </span>
-
                 </div>
               );
             });
           })()}
         </div>
-      </div>
-
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

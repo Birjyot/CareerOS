@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Target, Brain, Send, Zap } from 'lucide-react';
 import FileDropZone from './FileDropZone';
 import ShareResultButton from './ShareResultButton';
@@ -46,10 +46,10 @@ export default function AITools(props: any) {
             <button
               key={tab.key}
               onClick={() => setActiveAiView(tab.key)}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition ${
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${
                 activeAiView === tab.key
-                  ? 'bg-blue-600 text-white shadow-lg'
-                  : 'text-white/50 hover:text-white'
+                  ? 'bg-blue-600 text-white shadow-lg scale-105'
+                  : 'text-white/50 hover:text-white hover:bg-white/5'
               }`}
             >
               <tab.icon size={16} />
@@ -59,11 +59,15 @@ export default function AITools(props: any) {
         </div>
       </div>
 
-      {/* ================= CHAT ================= */}
-      {activeAiView === 'chat' && (
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
+      {/* ================= PANELS with AnimatePresence ================= */}
+      <AnimatePresence mode="wait" initial={false}>
+        {activeAiView === 'chat' && (
+          <motion.div
+            key="chat"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
           className="rounded-[32px] flex flex-col h-[700px]"
           style={{
             background: 'rgba(255,255,255,0.05)',
@@ -131,11 +135,17 @@ export default function AITools(props: any) {
             </button>
           </div>
         </motion.div>
-      )}
+        )}
 
-      {/* ================= ATS ================= */}
-      {activeAiView === 'ats' && (
-        <motion.div className="space-y-6">
+        {activeAiView === 'ats' && (
+          <motion.div
+            key="ats"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="space-y-6"
+          >
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <FileDropZone
@@ -331,8 +341,9 @@ export default function AITools(props: any) {
 
             </div>
           )}
-        </motion.div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -20,6 +20,7 @@ import DarkVeil from '../DarkVeil';
 import RotatingText from '../ui/RotatingText';
 import Footer from './Footer';
 import ScrollMarquee from './ScrollMarquee';
+import LandingNavbar from './LandingNavbar';
 
 // ── Design tokens — identical to dashboard ───────────────────────────────────
 const CARD = {
@@ -43,8 +44,7 @@ const ROTATING_WORDS = [
   'Faster',
   'AI-Driven',
   'Interview-Ready',
-  'Recruiter-Optimized',
-  'Data-Backed',
+  'Backend',
 ];
 
 const FEATURES = [
@@ -72,20 +72,22 @@ const MOCK_METRICS = [
 ];
 
 // ── Animation variants — same pattern as dashboard ────────────────────────────
+const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number];
+
 const fadeUp = (delay = 0) => ({
-  initial: { opacity: 0, y: 24 },
+  initial: { opacity: 0, y: 18 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+  transition: { duration: 0.5, delay, ease: EASE },
 });
 
 const stagger: Variants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.07 } },
+  show: { transition: { staggerChildren: 0.06, delayChildren: 0.02 } },
 };
 
 const staggerItem: Variants = {
-  hidden: { opacity: 0, y: 28 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
+  hidden: { opacity: 0, y: 22 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.42, ease: EASE } },
 };
 
 // ── Primary CTA button — reused in multiple places ────────────────────────────
@@ -95,24 +97,33 @@ function CTAButton({ size = 'md' }: { size?: 'md' | 'lg' }) {
   return (
     <Link
       href="/dashboard"
-      className={`group inline-flex items-center gap-2.5 ${px} rounded-2xl ${text} font-black uppercase tracking-widest text-white transition-all duration-300`}
+      className={`group inline-flex items-center gap-2.5 ${px} rounded-2xl ${text} font-black uppercase tracking-widest text-white`}
       style={{
         background: ACCENT,
         boxShadow: `0 0 28px rgba(15,82,186,0.45), inset 0 1px 0 rgba(255,255,255,0.1)`,
+        transition: 'box-shadow 0.22s ease, transform 0.18s cubic-bezier(0.22,1,0.36,1)',
       }}
       onMouseEnter={(e) => {
         const el = e.currentTarget as HTMLAnchorElement;
         el.style.boxShadow = `0 0 48px rgba(15,82,186,0.7), inset 0 1px 0 rgba(255,255,255,0.15)`;
-        el.style.transform = 'translateY(-2px)';
+        el.style.transform = 'translateY(-2px) scale(1.02)';
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLAnchorElement;
         el.style.boxShadow = `0 0 28px rgba(15,82,186,0.45), inset 0 1px 0 rgba(255,255,255,0.1)`;
-        el.style.transform = 'translateY(0)';
+        el.style.transform = 'translateY(0) scale(1)';
+      }}
+      onMouseDown={(e) => {
+        const el = e.currentTarget as HTMLAnchorElement;
+        el.style.transform = 'translateY(0) scale(0.97)';
+      }}
+      onMouseUp={(e) => {
+        const el = e.currentTarget as HTMLAnchorElement;
+        el.style.transform = 'translateY(-2px) scale(1.02)';
       }}
     >
       Go to Dashboard
-      <ArrowRight size={size === 'lg' ? 18 : 16} className="group-hover:translate-x-0.5 transition-transform" />
+      <ArrowRight size={size === 'lg' ? 18 : 16} className="group-hover:translate-x-1 transition-transform duration-200" />
     </Link>
   );
 }
@@ -156,15 +167,14 @@ function Hero() {
             {/* Headline */}
             <motion.h1
               {...fadeUp(0.1)}
-              className="text-5xl sm:text-6xl xl:text-7xl font-black leading-[1.06] tracking-tight text-white mb-6"
+              className="text-5xl sm:text-6xl xl:text-7xl font-black leading-[1.06] tracking-tight text-white! mb-6"
             >
-              Build a{' '}
-              <RotatingText 
-                words={ROTATING_WORDS} 
-                interval={2400} 
-                className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 inline-block"
+              Build a
+              <RotatingText
+                words={ROTATING_WORDS}
+                interval={2400}
+                className="!bg-clip-text !bg-gradient-to-r !from-blue-400 !via-purple-400 !to-pink-400 inline-block"
               />
-              <br />
               Career
             </motion.h1>
 
@@ -205,17 +215,18 @@ function Hero() {
             </motion.div>
           </div>
 
-          {/* ── RIGHT: Mock Dashboard Panel — same card DNA as Dashboard.tsx ── */}
+          {/* ── RIGHT: Mock Dashboard Panel ── */}
           <motion.div
-            initial={{ opacity: 0, x: 40 }}
+            initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.9, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.7, delay: 0.2, ease: EASE }}
             className="hidden lg:block"
           >
             <motion.div
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+              animate={{ y: [0, -8, 0] }}
+              transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', repeatType: 'loop' }}
               className="relative"
+              style={{ willChange: 'transform' }}
             >
               {/* Glow behind card */}
               <div
@@ -490,7 +501,7 @@ function DashboardPreview() {
           <div className="p-8 lg:p-10" style={{ background: '#050814' }}>
             {/* Header */}
             <div className="mb-8">
-              <h3 className="text-2xl font-bold text-white mb-1">Welcome back, Vikramjeet</h3>
+              <h3 className="text-2xl font-bold text-white mb-1">Welcome back</h3>
               <p className="text-sm text-white/60">Here's what's happening with your applications.</p>
             </div>
 
@@ -530,7 +541,7 @@ function DashboardPreview() {
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" /> LIVE
                   </div>
                 </div>
-                
+
                 {/* Chart Mockup */}
                 <div className="flex-1 flex items-end gap-2 lg:gap-4 relative pt-10 border-b border-white/5 pb-2">
                   {/* Y-axis labels */}
@@ -546,7 +557,7 @@ function DashboardPreview() {
                       { label: 'Rejected', height: '0%', color: '#3b82f6' },
                     ].map((col) => (
                       <div key={col.label} className="flex flex-col items-center gap-3 w-full group">
-                        <motion.div 
+                        <motion.div
                           className="w-8 lg:w-12 rounded-t-lg relative"
                           style={{ background: col.height !== '0%' ? `linear-gradient(to top, ${col.color}40, ${col.color})` : 'transparent' }}
                           initial={{ height: 0 }}
@@ -554,9 +565,9 @@ function DashboardPreview() {
                           viewport={{ once: true }}
                           transition={{ duration: 1, ease: "easeOut" }}
                         >
-                           {col.height !== '0%' && (
-                             <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-lg" />
-                           )}
+                          {col.height !== '0%' && (
+                            <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-lg" />
+                          )}
                         </motion.div>
                         <span className="text-[10px] font-medium text-white/50">{col.label}</span>
                       </div>
@@ -582,18 +593,18 @@ function DashboardPreview() {
                     </div>
                   </div>
                 ))}
-                
+
                 {/* Pro Feature Banner */}
-                <div 
-                  className="mt-auto p-5 rounded-[20px] relative overflow-hidden" 
-                  style={{ 
-                    background: 'linear-gradient(135deg, rgba(15,82,186,0.15), rgba(139,92,246,0.1))', 
-                    border: '1px solid rgba(139,92,246,0.2)' 
+                <div
+                  className="mt-auto p-5 rounded-[20px] relative overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(15,82,186,0.15), rgba(139,92,246,0.1))',
+                    border: '1px solid rgba(139,92,246,0.2)'
                   }}
                 >
-                   <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/20 blur-[40px] pointer-events-none" />
-                   <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">Pro Feature</p>
-                   <p className="text-sm font-bold text-white leading-tight">Unlock deeper market insights &amp; salary benchmarking.</p>
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/20 blur-[40px] pointer-events-none" />
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">Pro Feature</p>
+                  <p className="text-sm font-bold text-white leading-tight">Unlock deeper market insights &amp; salary benchmarking.</p>
                 </div>
               </div>
             </div>
@@ -690,6 +701,7 @@ export default function LandingPage() {
         aria-hidden="true"
       />
 
+      <LandingNavbar />
       <Hero />
       <ScrollMarquee />
       <Features />
