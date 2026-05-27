@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { motion, type Variants } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
   ArrowRight,
   Sparkles,
@@ -14,6 +15,7 @@ import {
   BarChart3,
   MessageSquare,
   Github,
+  Linkedin,
   ExternalLink,
   Zap,
   Shield,
@@ -210,25 +212,22 @@ const ROADMAP = [
   },
 ];
 
-// ── Challenges ────────────────────────────────────────────────────────────────
 const CHALLENGES = [
   {
     icon: AlertTriangle,
     color: '#ef4444',
-    title: 'The Gmail Sync Performance Crisis',
-    problem:
-      'Our initial Gmail sync used a Gemini agent to parse each email via AI — up to 15 separate API calls per sync. On Render\'s free tier, this caused requests to time out mid-flight. Render then returned raw HTML with no CORS headers, and the browser reported a misleading "Failed to fetch" error — masking the real problem entirely.',
-    solution:
-      'We re-architected the entire sync pipeline from AI-based extraction to a regex-rule engine. Subject lines, sender domains, and snippets are parsed using deterministic pattern matching with status inference rules (Offer → Interview → Screening → Applied). Sync now completes in under 5 seconds with zero AI API calls. We also added a hardened CORS response helper and explicit OPTIONS preflight handler to prevent future proxy stripping.',
+    title: 'Gmail Sync Performance Crisis',
+    problem: 'AI parsed each email individually — 15 API calls/sync, causing timeouts on free-tier hosting.',
+    solution: 'Regex-rule engine replaces AI extraction. Sync completes in <5s with zero AI calls.',
+    techStack: ['Regex Engine', 'CORS Hardening', 'Status Inference'],
   },
   {
     icon: Lock,
     color: '#f59e0b',
-    title: 'Google Cloud OAuth & CORS Architecture',
-    problem:
-      'Managing Google OAuth credentials across local dev and production on Render proved extremely complex. Redirect URIs had to match exactly. The Render proxy stripped CORS headers on crash responses. DB-backed OAuth state was needed to survive dyno restarts during the callback window. Credential serialization format between google-auth-oauthlib and our PostgreSQL User model was mismatched.',
-    solution:
-      'We implemented a DB-backed OAuth state machine where gmail_auth_state persists across Render restarts. The frontend polls /api/gmail/auth-status every 3 seconds during OAuth. CORS is now manually injected on every response — including crash paths — via a _make_cors_response() helper. Environment detection auto-switches redirect URIs between localhost and production Render URLs.',
+    title: 'OAuth & CORS Architecture',
+    problem: 'Google OAuth redirect mismatches + proxy-stripped CORS headers on crash responses.',
+    solution: 'DB-backed OAuth state machine + manual CORS injection on every response path.',
+    techStack: ['OAuth2 State Machine', 'PostgreSQL', 'Env Detection'],
   },
 ];
 
@@ -240,7 +239,7 @@ const DEVELOPERS = [
     bio: 'Architected the core CareerOS platform — from the Flask backend API to the Next.js dashboard. Led AI integration, database design, and production deployment strategy.',
     github: 'https://github.com/Birjyot',
     email: 'birjyotsahiwal7@gmail.com',
-    linkedin: '#',
+    linkedin: 'https://www.linkedin.com/in/birjyot-singh-sahiwal-12889a21a/',
     initials: 'BS',
     gradient: 'linear-gradient(135deg, #0F52BA, #3b82f6)',
     skills: ['Flask', 'Next.js', 'PostgreSQL', 'Google Cloud'],
@@ -251,7 +250,7 @@ const DEVELOPERS = [
     bio: 'Built the multi-provider AI router, Gmail sync pipeline, and ATS scoring engine. Specializes in building reliable AI systems with graceful fallback mechanisms.',
     github: 'https://github.com/stejasav',
     email: 'tejasavsingh2528@gmail.com',
-    linkedin: '#',
+    linkedin: 'https://www.linkedin.com/in/tejasav-singh-63b618276/',
     initials: 'TS',
     gradient: 'linear-gradient(135deg, #7c3aed, #a855f7)',
     skills: ['Gemini AI', 'Groq', 'Python', 'OAuth2'],
@@ -262,7 +261,7 @@ const DEVELOPERS = [
     bio: 'Designed and built the CareerOS user interface — from the immersive DarkVeil landing page to the Kanban job tracker and Recharts analytics dashboard.',
     github: 'https://github.com/vjlayal',
     email: 'vjlayal777@gmail.com',
-    linkedin: '#',
+    linkedin: 'https://www.linkedin.com/in/vikramjeet-singh-layal/',
     initials: 'VL',
     gradient: 'linear-gradient(135deg, #0891b2, #06b6d4)',
     skills: ['React', 'Framer Motion', 'Tailwind', 'Recharts'],
@@ -645,83 +644,427 @@ function RoadmapSection() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SECTION: CHALLENGES
+// SECTION: CHALLENGES (INTERACTIVE FLOWCHART)
 // ════════════════════════════════════════════════════════════════════════════
+const CHALLENGE_FLOWS = [
+  {
+    id: 'gmail',
+    title: 'Gmail Sync Performance Crisis',
+    icon: Mail,
+    color: '#ef4444',
+    glowColor: 'rgba(239, 68, 68, 0.15)',
+    techStack: ['Regex Engine', 'Status Inference', 'Supabase Database', 'OAuth2 Sync'],
+    nodes: [
+      {
+        id: 'g-1',
+        title: 'Gmail Fetch Sync',
+        stage: 'Trigger',
+        desc: 'User triggers a synchronization request to pull the latest job search emails from Gmail read-only scopes.',
+        icon: Mail,
+        color: '#3b82f6',
+      },
+      {
+        id: 'g-2',
+        title: 'AI Parsing Timeouts',
+        stage: 'The Bottleneck',
+        desc: 'AI processed each email individually. Took >25s per sync, caused hosting timeouts on Netlify/Render free tiers, and incurred heavy token costs.',
+        icon: AlertTriangle,
+        color: '#ef4444',
+        isProblem: true,
+      },
+      {
+        id: 'g-3',
+        title: 'Regex Parsing Engine',
+        stage: 'The Breakthrough',
+        desc: 'Replaced sequential AI calls with a deterministic regular expression pipeline. Sync drops from 25s+ to under 5 seconds with zero API costs.',
+        icon: Zap,
+        color: '#22c55e',
+      },
+      {
+        id: 'g-4',
+        title: 'Instant Database Log',
+        stage: 'Outcome',
+        desc: 'Successfully extracted roles, company names, and status updates are logged immediately to Supabase PostgreSQL.',
+        icon: CheckCircle,
+        color: '#a855f7',
+      },
+    ],
+  },
+  {
+    id: 'oauth',
+    title: 'OAuth2 & CORS Hardening',
+    icon: Lock,
+    color: '#f59e0b',
+    glowColor: 'rgba(245, 158, 11, 0.15)',
+    techStack: ['OAuth2 State Machine', 'Flask-CORS Wrapping', 'Session Cookies', 'Supabase Auth'],
+    nodes: [
+      {
+        id: 'o-1',
+        title: 'User Authenticates',
+        stage: 'Trigger',
+        desc: 'User attempts Google OAuth2 sign-in to securely link their Gmail account with CareerOS.',
+        icon: Users,
+        color: '#3b82f6',
+      },
+      {
+        id: 'o-2',
+        title: 'CORS & Redirect Loop',
+        stage: 'The Bottleneck',
+        desc: 'Google OAuth redirection mismatched domain configurations while Flask CORS headers were stripped on crash responses.',
+        icon: AlertTriangle,
+        color: '#ef4444',
+        isProblem: true,
+      },
+      {
+        id: 'o-3',
+        title: 'State Machine & Manual CORS',
+        stage: 'The Breakthrough',
+        desc: 'Implemented a database-backed OAuth state machine combined with strict manual response-header injection on backend route structures.',
+        icon: Shield,
+        color: '#22c55e',
+      },
+      {
+        id: 'o-4',
+        title: 'Bulletproof Sessions',
+        stage: 'Outcome',
+        desc: 'Secure session handshakes complete flawlessly without redirect drops, enabling stable production API operations.',
+        icon: CheckCircle,
+        color: '#a855f7',
+      },
+    ],
+  },
+];
+
 function ChallengesSection() {
+  const [activeFlowId, setActiveFlowId] = useState<'gmail' | 'oauth'>('gmail');
+  const [selectedNodeIndex, setSelectedNodeIndex] = useState<number>(1); // default to bottleneck node
+
+  const activeFlow = CHALLENGE_FLOWS.find((f) => f.id === activeFlowId) || CHALLENGE_FLOWS[0];
+  const selectedNode = activeFlow.nodes[selectedNodeIndex];
+
+  // Helper to place nodes in a snake pattern on mobile (1st: TL, 2nd: TR, 3rd: BR, 4th: BL)
+  const getMobileGridClass = (index: number) => {
+    switch (index) {
+      case 0: return 'col-start-1 row-start-1'; // Node 1: Top-Left
+      case 1: return 'col-start-2 row-start-1'; // Node 2: Top-Right
+      case 2: return 'col-start-2 row-start-2'; // Node 3: Bottom-Right
+      case 3: return 'col-start-1 row-start-2'; // Node 4: Bottom-Left
+      default: return '';
+    }
+  };
+
   return (
-    <section className="py-24 relative">
+    <section className="py-24 relative overflow-hidden">
+      {/* Top glowing boundary line */}
       <div
         className="absolute top-0 inset-x-0 h-px"
-        style={{ background: 'linear-gradient(to right, transparent, rgba(15,82,186,0.3), transparent)' }}
+        style={{
+          background: 'linear-gradient(to right, transparent, rgba(15,82,186,0.6), transparent)',
+        }}
       />
-      <div className="max-w-7xl mx-auto px-6">
+
+      <div className="max-w-7xl mx-auto px-6 relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="text-center mb-12"
         >
           <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-4">
-            Engineering Reality
+            Interactive Engineering Flowcharts
           </p>
           <h2 className="text-4xl sm:text-5xl font-black text-white tracking-tight mb-4">
-            The hard problems{' '}
-            <span style={{ color: ACCENT }}>we solved.</span>
+            The hard problems <span style={{ color: ACCENT }}>we solved.</span>
           </h2>
           <p className="text-white/50 max-w-2xl mx-auto">
-            Real production issues don&apos;t show up in tutorials. Here&apos;s what actually happened —
-            and how we fixed it.
+            Explore the interactive blueprints below to see how our engineering team overcame critical system challenges.
           </p>
         </motion.div>
 
-        <div className="space-y-6">
-          {CHALLENGES.map((challenge, i) => (
-            <motion.div
-              key={challenge.title}
-              initial={{ opacity: 0, y: 32 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.6, delay: i * 0.1 }}
-              className="rounded-[24px] p-8 lg:p-10 relative overflow-hidden"
-              style={CARD_DEEP}
-            >
-              <div
-                className="absolute inset-0 pointer-events-none"
-                style={{ background: `radial-gradient(ellipse at 10% 50%, ${challenge.color}07, transparent 50%)` }}
-              />
-              <div className="relative z-10">
-                <div className="flex items-start gap-5 mb-6">
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-                    style={{ background: `${challenge.color}15`, border: `1px solid ${challenge.color}25` }}
-                  >
-                    <challenge.icon size={22} style={{ color: challenge.color }} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">
-                      Engineering Challenge
-                    </p>
-                    <h3 className="text-xl font-black text-white">{challenge.title}</h3>
-                  </div>
-                </div>
-                <div className="grid lg:grid-cols-2 gap-8">
-                  <div>
-                    <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-3">
-                      The Problem
-                    </p>
-                    <p className="text-sm text-white/60 leading-relaxed">{challenge.problem}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-green-400 uppercase tracking-widest mb-3">
-                      The Solution
-                    </p>
-                    <p className="text-sm text-white/60 leading-relaxed">{challenge.solution}</p>
-                  </div>
-                </div>
+        {/* Tab Selection */}
+        <div className="flex justify-center gap-4 mb-12">
+          {CHALLENGE_FLOWS.map((flow) => {
+            const Icon = flow.icon;
+            const isActive = activeFlowId === flow.id;
+            return (
+              <button
+                key={flow.id}
+                onClick={() => {
+                  setActiveFlowId(flow.id as 'gmail' | 'oauth');
+                  setSelectedNodeIndex(1); // Reset to Problem node
+                }}
+                className={`flex items-center gap-2.5 px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${
+                  isActive
+                    ? 'text-white border'
+                    : 'text-white/40 border hover:text-white hover:bg-white/[0.02]'
+                }`}
+                style={{
+                  background: isActive ? 'rgba(15,82,186,0.12)' : 'transparent',
+                  borderColor: isActive ? '#0F52BA' : 'rgba(255,255,255,0.06)',
+                  boxShadow: isActive ? '0 0 30px rgba(15,82,186,0.2)' : 'none',
+                }}
+              >
+                <Icon size={14} className={isActive ? 'text-blue-400' : 'text-white/40'} />
+                {flow.title}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Interactive Workspace Grid */}
+        <div className="grid lg:grid-cols-12 gap-8 items-stretch">
+          {/* FLOWCHART VISUALIZER - 7 cols */}
+          <div className="lg:col-span-7 flex flex-col justify-between p-6 sm:p-8 rounded-[24px]" style={CARD_DEEP}>
+            <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/5">
+              <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
+                Interactive Architecture Blueprint
+              </span>
+              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest animate-pulse">
+                Click any node to inspect
+              </span>
+            </div>
+
+            {/* FLOW PIPELINE - Responsive Layout */}
+            <div className="relative py-10 sm:py-8 w-full">
+              {/* 1. Connector Pipeline Line (Desktop sm:block) - Centered top-to-bottom relative to the orbs */}
+              <div className="hidden sm:block absolute top-[64px] left-[10%] right-[10%] h-[2px] bg-white/5 pointer-events-none -z-10 overflow-hidden">
+                <motion.div
+                  className="h-full w-24 bg-gradient-to-r from-transparent via-blue-400 to-transparent"
+                  animate={{
+                    left: ['-20%', '120%'],
+                  }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 3,
+                    ease: 'linear',
+                  }}
+                  style={{ position: 'absolute' }}
+                />
               </div>
-            </motion.div>
-          ))}
+
+              {/* 2. Connector Pipeline Line (Mobile snaking SVG) */}
+              <svg className="sm:hidden absolute inset-0 w-full h-full -z-10 pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {/* Background track line */}
+                <path
+                  d="M 25 24 L 75 24 L 75 76 L 25 76"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.05)"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                {/* Flowing animated dash */}
+                <motion.path
+                  d="M 25 24 L 75 24 L 75 76 L 25 76"
+                  fill="none"
+                  stroke="url(#glowGradient)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="25 75"
+                  animate={{
+                    strokeDashoffset: [100, 0]
+                  }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 3.5,
+                    ease: 'linear',
+                  }}
+                />
+                <defs>
+                  <linearGradient id="glowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="transparent" />
+                    <stop offset="50%" stopColor="#60a5fa" />
+                    <stop offset="100%" stopColor="transparent" />
+                  </linearGradient>
+                </defs>
+              </svg>
+
+              {/* Responsive nodes container (2x2 grid on mobile, horizontal flex row on desktop) */}
+              <div className="grid grid-cols-2 gap-x-16 gap-y-24 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4 justify-items-center w-full relative">
+                {activeFlow.nodes.map((node, index) => {
+                  const NodeIcon = node.icon;
+                  const isSelected = selectedNodeIndex === index;
+                  const mobileGridClass = getMobileGridClass(index);
+
+                  return (
+                    <div
+                      key={node.id}
+                      className={`relative flex flex-col items-center cursor-pointer group ${mobileGridClass} sm:col-auto sm:row-auto`}
+                      onClick={() => setSelectedNodeIndex(index)}
+                    >
+                      {/* Glowing effect for selected node */}
+                      <AnimatePresence>
+                        {isSelected && (
+                          <motion.div
+                            layoutId="selectedGlow"
+                            className="absolute -inset-3 rounded-full blur-xl pointer-events-none -z-10"
+                            style={{
+                              background: `radial-gradient(circle, ${node.color}35, transparent)`,
+                            }}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                          />
+                        )}
+                      </AnimatePresence>
+
+                      {/* Stage Badge on Top */}
+                      <span
+                        className="absolute -top-6 text-[9px] font-bold uppercase tracking-wider transition-colors duration-300"
+                        style={{ color: isSelected ? node.color : 'rgba(255,255,255,0.3)' }}
+                      >
+                        {node.stage}
+                      </span>
+
+                      {/* Node Interactive Orb */}
+                      <motion.div
+                        whileHover={{ scale: 1.08 }}
+                        whileTap={{ scale: 0.96 }}
+                        className="w-14 h-14 sm:w-16 sm:h-16 rounded-[22px] flex items-center justify-center relative transition-all duration-300"
+                        style={{
+                          background: isSelected ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
+                          border: isSelected
+                            ? `2px solid ${node.color}`
+                            : '1.5px dashed rgba(255,255,255,0.12)',
+                          boxShadow: isSelected ? `0 0 20px ${node.color}30` : 'none',
+                        }}
+                      >
+                        <NodeIcon
+                          size={20}
+                          style={{ color: isSelected ? '#fff' : 'rgba(255,255,255,0.4)' }}
+                          className={node.isProblem && !isSelected ? 'animate-pulse' : ''}
+                        />
+
+                        {/* Small active badge */}
+                        {isSelected && (
+                          <span
+                            className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black text-white"
+                            style={{ background: node.color }}
+                          >
+                            ✓
+                          </span>
+                        )}
+                      </motion.div>
+
+                      {/* Node Title */}
+                      <span
+                        className="text-xs font-bold text-center mt-3 max-w-[110px] leading-tight transition-colors"
+                        style={{ color: isSelected ? '#fff' : 'rgba(255,255,255,0.5)' }}
+                      >
+                        {node.title}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Tech stack badge list */}
+            <div className="mt-8 pt-6 border-t border-white/5 flex flex-wrap gap-2 items-center">
+              <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest mr-2">
+                Tech Applied:
+              </span>
+              {activeFlow.techStack.map((tech) => (
+                <span
+                  key={tech}
+                  className="text-[9px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: 'rgba(255,255,255,0.6)',
+                  }}
+                >
+                  {tech}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* INSPECTOR PANEL (DEEP DIVE EXPLAINER CARD) - 5 cols */}
+          <div className="lg:col-span-5 flex flex-col justify-between p-7 sm:p-8 rounded-[24px]" style={CARD}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={selectedNode.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="flex-1 flex flex-col justify-between"
+              >
+                <div>
+                  {/* Category Header */}
+                  <div className="flex items-center justify-between mb-5">
+                    <span
+                      className="text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border"
+                      style={{
+                        color: selectedNode.color,
+                        borderColor: `${selectedNode.color}35`,
+                        background: `${selectedNode.color}08`,
+                      }}
+                    >
+                      {selectedNode.stage}
+                    </span>
+                    <span className="text-[10px] font-bold text-white/25 uppercase tracking-wider">
+                      Node {selectedNodeIndex + 1} of 4
+                    </span>
+                  </div>
+
+                  {/* Title & Description */}
+                  <h3 className="text-xl font-black text-white mb-3 flex items-center gap-2">
+                    {selectedNode.title}
+                  </h3>
+                  <p className="text-sm text-white/60 leading-relaxed mb-6">
+                    {selectedNode.desc}
+                  </p>
+                </div>
+
+                {/* Status Indicator */}
+                <div
+                  className="p-4 rounded-2xl relative overflow-hidden"
+                  style={{
+                    background: 'rgba(0,0,0,0.15)',
+                    border: '1px solid rgba(255,255,255,0.04)',
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{
+                        background: `${selectedNode.color}15`,
+                        border: `1px solid ${selectedNode.color}25`,
+                      }}
+                    >
+                      {selectedNodeIndex === 1 ? (
+                        <AlertTriangle size={14} className="text-red-400 animate-bounce" />
+                      ) : selectedNodeIndex === 2 ? (
+                        <Zap size={14} className="text-green-400" />
+                      ) : (
+                        <CheckCircle size={14} style={{ color: selectedNode.color }} />
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wide mb-0.5">
+                        {selectedNodeIndex === 1
+                          ? 'Engineering Failure Point'
+                          : selectedNodeIndex === 2
+                          ? 'The Architectural Fix'
+                          : 'System Pipeline Phase'}
+                      </h4>
+                      <p className="text-[11px] text-white/40 leading-normal">
+                        {selectedNodeIndex === 1
+                          ? 'This specific bottleneck caused system crashes, latency issues, or excessive server resource utilization.'
+                          : selectedNodeIndex === 2
+                          ? 'Rewriting this block with optimized logic completely bypassed downstream bottlenecks.'
+                          : 'Part of our unified full-stack architecture that enables continuous integration and telemetry.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </section>
@@ -844,7 +1187,7 @@ function DevelopersSection() {
                         rel="noopener noreferrer"
                         className="flex items-center gap-1.5 text-xs font-semibold text-white/50 hover:text-blue-400 transition-colors"
                       >
-                        <ExternalLink size={14} />
+                        <Linkedin size={14} />
                         LinkedIn
                       </a>
                     </>

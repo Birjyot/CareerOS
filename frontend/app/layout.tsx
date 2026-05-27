@@ -1,5 +1,7 @@
+import { Suspense } from 'react'
 import { Inter } from 'next/font/google'
 import { Providers } from '../components/Providers'
+import UniversalNav from '../components/UniversalNav'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -28,6 +30,9 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <Providers>
+          <Suspense fallback={null}>
+            <UniversalNav />
+          </Suspense>
           {children}
         </Providers>
       </body>

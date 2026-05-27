@@ -97,6 +97,105 @@ def _make_cors_response(data: dict, status: int = 200):
 def home():
     return jsonify({'message': 'CareerOS API', 'version': '3.0', 'status': 'running'})
 
+
+# ── Contact form endpoint ────────────────────────────────────────────────────
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+_CONTACT_RECIPIENTS = [
+    "birjyotsahiwal7@gmail.com",
+    "tejasavsingh54@gmail.com",
+    "vs330999@gmail.com",
+]
+
+@app.route('/api/contact', methods=['POST'])
+def handle_contact():
+    """
+    Receives a contact-form submission and emails all three developers.
+
+    Requires two env vars:
+      SMTP_EMAIL    – the Gmail address to send FROM
+      SMTP_PASSWORD – a Gmail App Password (NOT the regular password)
+
+    To create an App Password: Google Account → Security → 2-Step Verification
+    → App Passwords → Generate.
+    """
+    data = request.get_json(silent=True) or {}
+
+    name    = (data.get('name') or '').strip()
+    email   = (data.get('email') or '').strip()
+    subject = (data.get('subject') or '').strip()
+    message = (data.get('message') or '').strip()
+
+    # ── Validation ────────────────────────────────────────────────────────
+    if not name or not email or not subject or len(message) < 20:
+        return jsonify(
+            {"error": "All fields are required and message must be ≥ 20 chars."}
+        ), 400
+
+    smtp_email    = os.environ.get("SMTP_EMAIL", "")
+    smtp_password = os.environ.get("SMTP_PASSWORD", "")
+
+    if not smtp_email or not smtp_password:
+        # If SMTP is not configured, log a warning but still acknowledge
+        print("[CONTACT] SMTP not configured – logging message locally.")
+        print(f"  From: {name} <{email}>")
+        print(f"  Subject: [CareerOS Contact] {subject}")
+        print(f"  Message: {message[:200]}...")
+        return jsonify(
+            {"status": "ok", "note": "SMTP not configured; message logged on server."}
+        ), 200
+
+    # ── Build email ───────────────────────────────────────────────────────
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[CareerOS Contact] {subject}"
+        msg["From"]    = smtp_email
+        msg["To"]      = ", ".join(_CONTACT_RECIPIENTS)
+        msg["Reply-To"] = email
+
+        plain = (
+            f"New contact form submission from CareerOS\n"
+            f"{'─' * 48}\n\n"
+            f"Name:    {name}\n"
+            f"Email:   {email}\n"
+            f"Subject: {subject}\n\n"
+            f"Message:\n{message}\n"
+        )
+
+        html = f"""
+        <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#050814;color:#fff;border-radius:16px;">
+          <h2 style="margin:0 0 4px 0;font-size:20px;color:#fff;">New Contact Form Submission</h2>
+          <p style="margin:0 0 24px 0;font-size:13px;color:rgba(255,255,255,0.4);">via CareerOS Contact Page</p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+            <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;width:80px;">Name</td><td style="padding:8px 0;color:#fff;font-size:14px;font-weight:600;">{name}</td></tr>
+            <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;">Email</td><td style="padding:8px 0;color:#60a5fa;font-size:14px;"><a href="mailto:{email}" style="color:#60a5fa;text-decoration:none;">{email}</a></td></tr>
+            <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;">Subject</td><td style="padding:8px 0;color:#fff;font-size:14px;">{subject}</td></tr>
+          </table>
+          <div style="padding:20px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;">
+            <p style="margin:0;font-size:14px;line-height:1.7;color:rgba(255,255,255,0.8);white-space:pre-wrap;">{message}</p>
+          </div>
+          <p style="margin-top:24px;font-size:11px;color:rgba(255,255,255,0.2);">This email was sent automatically by the CareerOS contact form.</p>
+        </div>
+        """
+
+        msg.attach(MIMEText(plain, "plain"))
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(smtp_email, smtp_password)
+            server.sendmail(smtp_email, _CONTACT_RECIPIENTS, msg.as_string())
+
+        print(f"[CONTACT] Email sent to {_CONTACT_RECIPIENTS} from {name} <{email}>")
+        return jsonify({"status": "ok"}), 200
+
+    except Exception as e:
+        print(f"[CONTACT] SMTP send failed: {e}")
+        return jsonify(
+            {"error": "Failed to send email. Please try again later."}
+        ), 500
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     """

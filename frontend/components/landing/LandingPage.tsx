@@ -21,7 +21,7 @@ import DarkVeil from '../DarkVeil';
 import RotatingText from '../ui/RotatingText';
 import Footer from './Footer';
 import ScrollMarquee from './ScrollMarquee';
-import LandingNavbar from './LandingNavbar';
+
 
 // ── Design tokens — identical to dashboard ───────────────────────────────────
 const CARD = {
@@ -649,7 +649,7 @@ export default function LandingPage() {
         aria-hidden="true"
       />
 
-      <LandingNavbar />
+
       <Hero />
       <ScrollMarquee />
       <Features />

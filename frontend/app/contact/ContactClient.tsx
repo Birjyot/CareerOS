@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
   Github,
+  Linkedin,
   Mail,
   ExternalLink,
   ArrowRight,
@@ -63,7 +64,7 @@ const DEVELOPERS = [
     bio: 'Architected the core CareerOS platform. Specializes in Flask APIs, Next.js, PostgreSQL, and production deployment.',
     github: 'https://github.com/Birjyot',
     email: 'birjyotsahiwal7@gmail.com',
-    linkedin: 'https://linkedin.com/in/birjyot',
+    linkedin: 'https://www.linkedin.com/in/birjyot-singh-sahiwal-12889a21a/',
     initials: 'BS',
     gradient: 'linear-gradient(135deg, #0F52BA, #3b82f6)',
     accentColor: '#3b82f6',
@@ -75,7 +76,7 @@ const DEVELOPERS = [
     bio: 'Built the AI router, Gmail sync engine, and ATS scoring pipeline. Expert in multi-provider AI systems and OAuth2.',
     github: 'https://github.com/stejasav',
     email: 'tejasavsingh2528@gmail.com',
-    linkedin: 'https://linkedin.com/in/tejasav',
+    linkedin: 'https://www.linkedin.com/in/tejasav-singh-63b618276/',
     initials: 'TS',
     gradient: 'linear-gradient(135deg, #7c3aed, #a855f7)',
     accentColor: '#a855f7',
@@ -87,7 +88,7 @@ const DEVELOPERS = [
     bio: 'Designed and built the entire UI — from the immersive landing page to analytics dashboards and Kanban boards.',
     github: 'https://github.com/vjlayal',
     email: 'vjlayal777@gmail.com',
-    linkedin: 'https://linkedin.com/in/vjlayal',
+    linkedin: 'https://www.linkedin.com/in/vikramjeet-singh-layal/',
     initials: 'VL',
     gradient: 'linear-gradient(135deg, #0891b2, #06b6d4)',
     accentColor: '#06b6d4',
@@ -239,7 +240,7 @@ function DeveloperCards() {
                     {dev.initials}
                   </div>
                   <a
-                    href={dev.github}
+                    href={dev.linkedin}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200"
@@ -259,7 +260,7 @@ function DeveloperCards() {
                       (e.currentTarget as HTMLAnchorElement).style.borderColor = 'rgba(255,255,255,0.08)';
                     }}
                   >
-                    <Github size={16} />
+                    <Linkedin size={16} />
                   </a>
                 </div>
 
@@ -325,7 +326,7 @@ function DeveloperCards() {
                     }}
                   >
                     <Github size={14} />
-                    {dev.github.replace('https://github.com/', '@')}
+                    GitHub
                     <ExternalLink size={12} className="ml-auto text-white/30" />
                   </a>
                 </div>
@@ -341,6 +342,68 @@ function DeveloperCards() {
 // ════════════════════════════════════════════════════════════════════════════
 // CONTACT FORM
 // ════════════════════════════════════════════════════════════════════════════
+
+const fieldBase = {
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  color: '#fff',
+  borderRadius: '12px',
+  outline: 'none',
+  transition: 'all 0.2s',
+} as React.CSSProperties;
+
+const fieldFocusStyle = {
+  borderColor: 'rgba(15,82,186,0.5)',
+  background: 'rgba(15,82,186,0.05)',
+  boxShadow: '0 0 0 3px rgba(15,82,186,0.1)',
+};
+
+function InputField({
+  id,
+  label,
+  type = 'text',
+  placeholder,
+  value,
+  onChange,
+  error,
+}: {
+  id: string;
+  label: string;
+  type?: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  error?: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-2">
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-4 py-3 text-sm placeholder:text-white/20"
+        style={fieldBase}
+        onFocus={(e) => Object.assign(e.currentTarget.style, fieldFocusStyle)}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+          e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      />
+      {error && (
+        <p className="text-xs text-red-400 mt-1.5 flex items-center gap-1">
+          <AlertCircle size={11} />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 type FormStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -379,81 +442,27 @@ function ContactForm() {
     e.preventDefault();
     if (!validate()) return;
     setStatus('loading');
-    // Simulate form submission — replace with actual API if needed
-    await new Promise((r) => setTimeout(r, 1800));
-    // In production, send to a mailto action or serverless function
-    // For now, open a mailto link with the form data
-    const subject = encodeURIComponent(`[CareerOS] ${formData.subject}`);
-    const body = encodeURIComponent(
-      `Name: ${formData.name}\nEmail: ${formData.email}\n\nMessage:\n${formData.message}`
-    );
-    window.open(`mailto:birjyotsahiwal7@gmail.com?subject=${subject}&body=${body}`, '_blank');
-    setStatus('success');
-    setFormData({ name: '', email: '', subject: '', message: '' });
+    
+    try {
+      const res = await fetch(process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/contact` : 'http://localhost:5001/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        setStatus('success');
+        setFormData({ name: '', email: '', subject: '', message: '' });
+      } else {
+        setStatus('error');
+      }
+    } catch (err) {
+      console.error(err);
+      setStatus('error');
+    }
+    
     setTimeout(() => setStatus('idle'), 5000);
   }
 
-  const fieldBase = {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    color: '#fff',
-    borderRadius: '12px',
-    outline: 'none',
-    transition: 'all 0.2s',
-  } as React.CSSProperties;
-
-  const fieldFocusStyle = {
-    borderColor: 'rgba(15,82,186,0.5)',
-    background: 'rgba(15,82,186,0.05)',
-    boxShadow: '0 0 0 3px rgba(15,82,186,0.1)',
-  };
-
-  function InputField({
-    id,
-    label,
-    type = 'text',
-    placeholder,
-    value,
-    onChange,
-    error,
-  }: {
-    id: string;
-    label: string;
-    type?: string;
-    placeholder: string;
-    value: string;
-    onChange: (v: string) => void;
-    error?: string;
-  }) {
-    return (
-      <div>
-        <label htmlFor={id} className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-2">
-          {label}
-        </label>
-        <input
-          id={id}
-          type={type}
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full px-4 py-3 text-sm placeholder:text-white/20"
-          style={fieldBase}
-          onFocus={(e) => Object.assign(e.currentTarget.style, fieldFocusStyle)}
-          onBlur={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-            e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        />
-        {error && (
-          <p className="text-xs text-red-400 mt-1.5 flex items-center gap-1">
-            <AlertCircle size={11} />
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  }
 
   return (
     <section className="py-16 relative">
@@ -531,7 +540,7 @@ function ContactForm() {
                     </div>
                     <h3 className="text-xl font-black text-white mb-2">Message sent!</h3>
                     <p className="text-sm text-white/50 max-w-xs">
-                      Your email client opened with your message. We&apos;ll get back to you within 24–48 hours.
+                      Your message has been successfully sent. We&apos;ll get back to you within 24–48 hours.
                     </p>
                   </motion.div>
                 ) : (

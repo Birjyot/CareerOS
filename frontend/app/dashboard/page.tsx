@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import ShareResultButton from '../../components/ShareResultButton';
 import JobCard from '../../components/JobCard';
-import Header from '../../components/Header';
+import { useImpersonation } from '../../components/ImpersonationContext';
 import DarkVeil from '../../components/DarkVeil';
 import Dashboard from '../../components/Dashboard';
 import Analytics from '../../components/Analytics';
@@ -70,7 +70,7 @@ const statusBarColors: Record<string, string> = {
 function PremiumJobTrackerContent() {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
   const { data: session, status: sessionStatus } = useSession();
-  const [impersonatedUser, setImpersonatedUser] = useState<{ name: string; email: string; image?: string; } | null>(null);
+  const { impersonatedUser, setImpersonatedUser } = useImpersonation();
 
   // Use impersonated email if set, otherwise real session email
   const activeUser = impersonatedUser || session?.user;
@@ -82,6 +82,13 @@ function PremiumJobTrackerContent() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const initialTab = searchParams.get('tab') || 'dashboard';
   const [activeTab, setActiveTab] = useState(initialTab);
+  
+  // Sync activeTab with URL
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
+
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState('All');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
@@ -108,8 +115,6 @@ function PremiumJobTrackerContent() {
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [activeAiView, setActiveAiView] = useState<'chat' | 'ats'>('chat');
   const dragJobRef = useRef<Job | null>(null);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
     company: '', position: '', location: '', status: 'Applied',
@@ -409,21 +414,6 @@ function PremiumJobTrackerContent() {
         />
       </div>
 
-      {/* Header */}
-      <Header
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        session={session}
-        sessionStatus={sessionStatus}
-        activeName={activeName}
-        activeEmail={activeEmail}
-        activeImage={activeImage}
-        impersonatedUser={impersonatedUser}
-        setImpersonatedUser={setImpersonatedUser}
-        showProfileMenu={showProfileMenu}
-        setShowProfileMenu={setShowProfileMenu}
-        profileMenuRef={profileMenuRef}
-      />
 
       {/* Notification Banner */}
       <AnimatePresence>
