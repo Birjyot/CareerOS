@@ -15,9 +15,9 @@ const LINKS = {
     { label: 'Career Blog', href: '#' },
   ],
   Company: [
-    { label: 'About', href: '#' },
-    { label: 'Contact', href: '#' },
-    { label: 'Privacy Policy', href: '#' },
+    { label: 'About', href: '/about' },
+    { label: 'Contact', href: '/contact' },
+    { label: 'Privacy Policy', href: '/privacy' },
   ],
 };
 
