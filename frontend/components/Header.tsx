@@ -60,14 +60,13 @@ export default function Header({
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className="relative px-4 py-2 group transition-colors cursor-pointer"
+                  className="relative whitespace-nowrap px-4 py-2 group transition-colors cursor-pointer"
                 >
                   <span
-                    className={`relative z-10 text-base font-semibold transition-colors capitalize ${
-                      activeTab === tab
-                        ? 'text-[#FFF]'
-                        : 'text-white'
-                    }`}
+                    className={`relative z-10 text-base font-semibold transition-colors capitalize ${activeTab === tab
+                      ? 'text-[#FFF]'
+                      : 'text-white'
+                      }`}
                   >
                     {tab.replace('-', ' ')}
                   </span>
@@ -131,9 +130,8 @@ export default function Header({
                   </div>
                   <ChevronDown
                     size={16}
-                    className={`text-white transition-transform duration-200 ${
-                      showProfileMenu ? 'rotate-180' : ''
-                    }`}
+                    className={`text-white transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''
+                      }`}
                   />
                 </button>
                 {/* DROPDOWN */}
