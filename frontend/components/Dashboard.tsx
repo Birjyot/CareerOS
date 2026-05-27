@@ -105,7 +105,7 @@ export default function Dashboard({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, ease: EASE, delay: i * 0.07 }}
               whileHover={{ y: -4, transition: { duration: 0.2 } }}
-              className="p-6 rounded-[20px] flex flex-col justify-between cursor-default"
+              className="p-6 rounded-[20px] flex flex-col cursor-default"
               style={{
                 background: 'rgba(255,255,255,0.06)',
                 backdropFilter: 'blur(25px)',
@@ -114,11 +114,10 @@ export default function Dashboard({
             >
               <div className="flex items-start justify-between mb-4">
                 <div
-                  className={`p-2.5 rounded-2xl ${
-                    s.priority === 'high'
+                  className={`p-2.5 rounded-2xl ${s.priority === 'high'
                       ? 'bg-red-500/10 text-red-400'
                       : 'bg-blue-500/10 text-blue-400'
-                  }`}
+                    }`}
                 >
                   <Sparkles size={18} />
                 </div>
@@ -130,13 +129,6 @@ export default function Dashboard({
               <p className="text-sm font-semibold text-white/80 leading-relaxed">
                 {s.message}
               </p>
-
-              <div
-                onClick={() => onTakeAction(s.job_id)}
-                className="mt-4 pt-4 border-t border-white/10 cursor-pointer flex items-center gap-2 text-blue-400 text-xs font-bold hover:text-blue-300 transition-colors"
-              >
-                Take Action <ArrowRight size={14} />
-              </div>
             </motion.div>
           ))}
         </motion.div>
@@ -172,9 +164,9 @@ export default function Dashboard({
           {/* METRICS */}
           <div className="lg:col-span-4 grid grid-cols-1 gap-4">
             {[
-              { label: 'Total Tracked',     value: stats.total,                  icon: Target },
-              { label: 'Active Interviews', value: stats.by_status.Interview,     icon: Calendar },
-              { label: 'Success Rate',      value: `${stats.response_rate}%`,    icon: TrendingUp },
+              { label: 'Total Tracked', value: stats.total, icon: Target },
+              { label: 'Active Interviews', value: stats.by_status.Interview, icon: Calendar },
+              { label: 'Success Rate', value: `${stats.response_rate}%`, icon: TrendingUp },
             ].map((s, i) => (
               <motion.div
                 key={i}

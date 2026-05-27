@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertCircle, Info, Sparkles, X} from 'lucide-react';
+import { AlertCircle, Info, Sparkles, X } from 'lucide-react';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -13,7 +13,7 @@ import Dashboard from '../../components/Dashboard';
 import Analytics from '../../components/Analytics';
 import AITools from '../../components/AITools';
 import Applications from '../../components/Applications';
-import Image from "next/image"; 
+import Image from "next/image";
 
 interface Job {
   id: number;
@@ -71,7 +71,7 @@ function PremiumJobTrackerContent() {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
   const { data: session, status: sessionStatus } = useSession();
   const [impersonatedUser, setImpersonatedUser] = useState<{ name: string; email: string; image?: string; } | null>(null);
-  
+
   // Use impersonated email if set, otherwise real session email
   const activeUser = impersonatedUser || session?.user;
   const activeEmail = activeUser?.email || '';
@@ -104,7 +104,7 @@ function PremiumJobTrackerContent() {
   const [isMatchLoading, setIsMatchLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncSuccess, setIsSyncSuccess] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<{added: number} | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{ added: number } | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [activeAiView, setActiveAiView] = useState<'chat' | 'ats'>('chat');
   const dragJobRef = useRef<Job | null>(null);
@@ -251,10 +251,10 @@ function PremiumJobTrackerContent() {
     if (!resumeText.trim() || !jobDescription.trim()) return;
     setIsMatchLoading(true); setMatchResult(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/ai/match-resume`, { 
-        method: 'POST', 
-        headers: authHeaders(), 
-        body: JSON.stringify({ resume_text: resumeText, job_description: jobDescription }) 
+      const res = await fetch(`${API_BASE_URL}/api/ai/match-resume`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ resume_text: resumeText, job_description: jobDescription })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'ATS Scan failed');
@@ -275,8 +275,8 @@ function PremiumJobTrackerContent() {
       let res: Response;
       try {
         res = await fetch(`${API_BASE_URL}/api/gmail/sync`, {
-          method:      'POST',
-          headers:     authHeaders(),
+          method: 'POST',
+          headers: authHeaders(),
           credentials: 'include',
         });
       } catch (fetchErr: any) {
@@ -299,8 +299,8 @@ function PremiumJobTrackerContent() {
         let startRes: Response;
         try {
           startRes = await fetch(`${API_BASE_URL}/api/gmail/auth-start`, {
-            method:      'POST',
-            headers:     authHeaders(),
+            method: 'POST',
+            headers: authHeaders(),
             credentials: 'include',
           });
         } catch (fetchErr: any) {
@@ -317,15 +317,15 @@ function PremiumJobTrackerContent() {
         if (startData.auth_url) {
           setNotification({
             message: 'Check your browser! Grant access in the new Google tab to continue.',
-            type:    'info',
+            type: 'info',
           });
           window.open(startData.auth_url, '_blank');
 
           // Poll for OAuth completion (checks DB-backed status)
           const pollInterval = setInterval(async () => {
             try {
-              const statusRes  = await fetch(`${API_BASE_URL}/api/gmail/auth-status`, {
-                headers:     authHeaders(),
+              const statusRes = await fetch(`${API_BASE_URL}/api/gmail/auth-status`, {
+                headers: authHeaders(),
                 credentials: 'include',
               });
               const statusData = await statusRes.json();
@@ -339,7 +339,7 @@ function PremiumJobTrackerContent() {
                 setIsSyncing(false);
                 setNotification({
                   message: `Authorization failed: ${statusData.message || 'Unknown error'}`,
-                  type:    'error',
+                  type: 'error',
                 });
               }
             } catch (pollErr) {
@@ -359,7 +359,7 @@ function PremiumJobTrackerContent() {
       }
 
       // ── Step 4: Success ───────────────────────────────────────────────────
-      const added   = data.added   ?? 0;
+      const added = data.added ?? 0;
       const updated = data.updated ?? 0;
       const skipped = data.skipped ?? 0;
 
@@ -373,17 +373,17 @@ function PremiumJobTrackerContent() {
 
       if (added > 0 || updated > 0) {
         const parts = [];
-        if (added   > 0) parts.push(`${added} new application${added   !== 1 ? 's' : ''}`);
+        if (added > 0) parts.push(`${added} new application${added !== 1 ? 's' : ''}`);
         if (updated > 0) parts.push(`${updated} status update${updated !== 1 ? 's' : ''}`);
         if (skipped > 0) parts.push(`${skipped} skipped`);
         setNotification({
           message: `Gmail sync complete! ${parts.join(', ')}.`,
-          type:    'success',
+          type: 'success',
         });
       } else {
         setNotification({
           message: 'Sync complete — no new job emails matched this time.',
-          type:    'info',
+          type: 'info',
         });
       }
 
@@ -428,7 +428,7 @@ function PremiumJobTrackerContent() {
       {/* Notification Banner */}
       <AnimatePresence>
         {notification && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -30, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -30, scale: 0.96 }}
@@ -444,13 +444,12 @@ function PremiumJobTrackerContent() {
             >
               <div
                 className={`w-9 h-9 rounded-xl flex items-center justify-center
-                ${
-                  notification.type === 'success'
+                ${notification.type === 'success'
                     ? 'bg-green-500/15 text-green-400'
                     : notification.type === 'error'
-                    ? 'bg-red-500/15 text-red-400'
-                    : 'bg-blue-500/15 text-blue-400'
-                }`}
+                      ? 'bg-red-500/15 text-red-400'
+                      : 'bg-blue-500/15 text-blue-400'
+                  }`}
               >
                 {notification.type === 'success' && <Sparkles size={18} />}
                 {notification.type === 'error' && <AlertCircle size={18} />}
@@ -490,7 +489,7 @@ function PremiumJobTrackerContent() {
                 syncStatus={syncStatus}
                 setSyncStatus={setSyncStatus}
                 STATUSES={STATUSES}
-                onTakeAction={() => {}}
+                onTakeAction={() => { }}
               />
             </motion.div>
           )}
@@ -677,11 +676,6 @@ function PremiumJobTrackerContent() {
             boxShadow: '0 10px 40px rgba(0,0,0,0.5)'
           }}
         >
-          {/* <img
-            src="/logo.svg"
-            alt="AI Assistant"
-            className="w-10 h-10 object-contain"
-          /> */}
           <Image
             src="/logo.svg"
             alt="AI Assistant"

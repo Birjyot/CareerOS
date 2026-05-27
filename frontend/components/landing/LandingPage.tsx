@@ -488,9 +488,6 @@ function DashboardPreview() {
                     <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{insight.title}</span>
                   </div>
                   <p className="text-sm font-semibold text-white/90 mb-6 leading-snug relative z-10">{insight.desc}</p>
-                  <button className="text-xs font-semibold text-blue-400 flex items-center gap-1 mt-auto relative z-10 hover:text-blue-300 transition-colors">
-                    Take Action <ArrowRight size={12} />
-                  </button>
                 </div>
               ))}
             </div>
