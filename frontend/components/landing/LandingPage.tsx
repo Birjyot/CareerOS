@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion, type Variants } from 'framer-motion';
 import {
   ArrowRight,
@@ -185,33 +186,12 @@ function Hero() {
             >
               CareerOS is your AI-powered career command center. Track applications,
               generate cover letters, ace interviews with AI coaching, and score your
-              resume — all in one beautiful dashboard.
+              resume - all in one beautiful dashboard.
             </motion.p>
 
             {/* CTA */}
             <motion.div {...fadeUp(0.34)} className="mb-14">
               <CTAButton size="lg" />
-            </motion.div>
-
-            {/* Stats row — same pattern as dashboard metrics */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.8, delay: 0.5 }}
-              className="flex items-center gap-8"
-            >
-              {[
-                { value: '8+', label: 'AI Features' },
-                { value: '100%', label: 'Free to Use' },
-                { value: '∞', label: 'Applications' },
-              ].map((s) => (
-                <div key={s.label}>
-                  <p className="text-2xl font-black text-white leading-none">{s.value}</p>
-                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mt-1">
-                    {s.label}
-                  </p>
-                </div>
-              ))}
             </motion.div>
           </div>
 
@@ -326,19 +306,6 @@ function Hero() {
                   </div>
                 </div>
               </div>
-
-              {/* Floating badge — same style as dashboard's Pro Feature card label */}
-              <motion.div
-                className="absolute -top-4 -right-4 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest text-white"
-                style={{
-                  background: ACCENT,
-                  boxShadow: '0 8px 24px rgba(15,82,186,0.5)',
-                }}
-                animate={{ rotate: [0, 2, 0, -2, 0] }}
-                transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                ✨ AI-Powered
-              </motion.div>
             </motion.div>
           </motion.div>
         </div>
@@ -376,7 +343,7 @@ function Features() {
             <span style={{ color: ACCENT }}>job seekers</span>
           </h2>
           <p className="text-white/50 max-w-xl mx-auto">
-            Eight powerful AI tools working together so you can focus on what matters — landing the job.
+            Eight powerful AI tools working together so you can focus on what matters - landing the job.
           </p>
         </motion.div>
 
@@ -648,17 +615,7 @@ function FinalCTA() {
 
           {/* Content */}
           <div className="relative z-10">
-            <div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl mb-8"
-              style={CARD}
-            >
-              <Sparkles size={14} className="text-blue-400" />
-              <span className="text-sm text-white/60 font-semibold uppercase tracking-widest">
-                Free · No credit card required
-              </span>
-            </div>
-
-            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight mb-5 leading-tight">
+            <h2 className="text-4xl sm:text-5xl lg:text-5xl font-black text-white tracking-tight mb-5 leading-tight">
               Start managing your career
               <br />
               <span style={{ color: ACCENT }}>like a pro</span>
@@ -677,14 +634,9 @@ function FinalCTA() {
   );
 }
 
-
-// ════════════════════════════════════════════════════════════════════════════════
-// ROOT LANDING PAGE — DarkVeil background, no navbar, four focused sections
-// ════════════════════════════════════════════════════════════════════════════════
 export default function LandingPage() {
   return (
     <div className="min-h-screen relative isolate" style={{ color: '#fff' }}>
-      {/* DarkVeil background — IDENTICAL params to dashboard */}
       <div className="fixed inset-0 -z-10" aria-hidden="true">
         <DarkVeil
           hueShift={32}
@@ -694,7 +646,6 @@ export default function LandingPage() {
         />
       </div>
 
-      {/* Dark overlay so text stays readable over the shader */}
       <div
         className="fixed inset-0 -z-10 pointer-events-none"
         style={{ background: 'rgba(5,8,20,0.55)' }}
@@ -708,6 +659,36 @@ export default function LandingPage() {
       <DashboardPreview />
       <FinalCTA />
       <Footer />
+
+      <a
+        href="https://prepify-one.vercel.app/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 z-50 group"
+      >
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center cursor-pointer transition-all duration-300"
+          style={{
+            background: 'rgba(255,255,255,0.08)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.5)'
+          }}
+        >
+          <Image
+            src="/logo.svg"
+            alt="AI Assistant"
+            width={40}
+            height={40}
+            className="object-contain"
+          />
+        </div>
+
+        {/* Hover Tooltip */}
+        <span className="absolute -top-7 -translate-y-1/2 px-3 py-1.5 text-xs rounded-lg bg-[#1a1c20] text-white opacity-0 group-hover:opacity-100 transition">
+          Prepify
+        </span>
+      </a>
     </div>
   );
 }
