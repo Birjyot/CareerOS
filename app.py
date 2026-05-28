@@ -109,6 +109,29 @@ _CONTACT_RECIPIENTS = [
     "vs330999@gmail.com",
 ]
 
+def _contact_cors(response, status=200):
+    """Inject CORS headers directly on every contact response so they survive even if Render's proxy intercepts."""
+    origin = request.headers.get("Origin", "")
+    if origin in _ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"]      = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization, X-User-Email"
+    return response, status
+
+
+@app.route('/api/contact', methods=['OPTIONS'])
+def handle_contact_preflight():
+    """Explicit preflight handler — flask-cors sometimes misses this on error paths."""
+    origin = request.headers.get("Origin", "")
+    resp   = app.make_default_options_response()
+    if origin in _ALLOWED_ORIGINS:
+        resp.headers["Access-Control-Allow-Origin"]      = origin
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization, X-User-Email"
+        resp.headers["Access-Control-Allow-Methods"]     = "POST, OPTIONS"
+    return resp
+
+
 @app.route('/api/contact', methods=['POST'])
 def handle_contact():
     """
@@ -130,24 +153,85 @@ def handle_contact():
 
     # ── Validation ────────────────────────────────────────────────────────
     if not name or not email or not subject or len(message) < 20:
-        return jsonify(
-            {"error": "All fields are required and message must be ≥ 20 chars."}
-        ), 400
+        return _contact_cors(
+            jsonify({"error": "All fields are required and message must be ≥ 20 chars."}),
+            400
+        )
 
+    resend_api_key = os.environ.get("RESEND_API_KEY", "")
     smtp_email    = os.environ.get("SMTP_EMAIL", "")
     smtp_password = os.environ.get("SMTP_PASSWORD", "")
 
-    if not smtp_email or not smtp_password:
-        # If SMTP is not configured, log a warning but still acknowledge
-        print("[CONTACT] SMTP not configured – logging message locally.")
+    if not resend_api_key and (not smtp_email or not smtp_password):
+        # If neither email method is configured, log locally and respond
+        print("[CONTACT] Email service not configured – logging message locally.")
         print(f"  From: {name} <{email}>")
         print(f"  Subject: [CareerOS Contact] {subject}")
         print(f"  Message: {message[:200]}...")
-        return jsonify(
-            {"status": "ok", "note": "SMTP not configured; message logged on server."}
-        ), 200
+        return _contact_cors(
+            jsonify({"status": "ok", "note": "Email not configured; message logged on server."}),
+            200
+        )
 
-    # ── Build email ───────────────────────────────────────────────────────
+    plain = (
+        f"New contact form submission from CareerOS\n"
+        f"{'─' * 48}\n\n"
+        f"Name:    {name}\n"
+        f"Email:   {email}\n"
+        f"Subject: {subject}\n\n"
+        f"Message:\n{message}\n"
+    )
+
+    html = f"""
+    <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#050814;color:#fff;border-radius:16px;">
+      <h2 style="margin:0 0 4px 0;font-size:20px;color:#fff;">New Contact Form Submission</h2>
+      <p style="margin:0 0 24px 0;font-size:13px;color:rgba(255,255,255,0.4);">via CareerOS Contact Page</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+        <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;width:80px;">Name</td><td style="padding:8px 0;color:#fff;font-size:14px;font-weight:600;">{name}</td></tr>
+        <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;">Email</td><td style="padding:8px 0;color:#60a5fa;font-size:14px;"><a href="mailto:{email}" style="color:#60a5fa;text-decoration:none;">{email}</a></td></tr>
+        <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;">Subject</td><td style="padding:8px 0;color:#fff;font-size:14px;">{subject}</td></tr>
+      </table>
+      <div style="padding:20px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;">
+        <p style="margin:0;font-size:14px;line-height:1.7;color:rgba(255,255,255,0.8);white-space:pre-wrap;">{message}</p>
+      </div>
+      <p style="margin-top:24px;font-size:11px;color:rgba(255,255,255,0.2);">This email was sent automatically by the CareerOS contact form.</p>
+    </div>
+    """
+
+    # ── METHOD A: Resend API (HTTPS Port 443 - Perfect for Render Free Tier) ──
+    if resend_api_key:
+        import requests
+        try:
+            resp = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": "CareerOS Contact <onboarding@resend.dev>",
+                    "to": _CONTACT_RECIPIENTS,
+                    "subject": f"[CareerOS Contact] {subject}",
+                    "html": html,
+                    "text": plain,
+                    "reply_to": email
+                }
+            )
+            if resp.status_code in [200, 201]:
+                print(f"[CONTACT] Email sent via Resend API to {_CONTACT_RECIPIENTS}")
+                return _contact_cors(jsonify({"status": "ok"}), 200)
+            else:
+                print(f"[CONTACT] Resend API error ({resp.status_code}): {resp.text}")
+                raise RuntimeError(f"Resend error: {resp.text}")
+        except Exception as e:
+            print(f"[CONTACT] Resend API failed: {e}")
+            if not (smtp_email and smtp_password):
+                return _contact_cors(jsonify({"error": f"Email sending failed: {e}"}), 500)
+
+    # ── METHOD B: Legacy SMTP SSL (Blocked on Render Free Tier) ───────────────
+    # NOTE: Render free tier blocks ports 25/465/587. This path will timeout.
+    # Add RESEND_API_KEY to your Render env vars to use Method A instead.
+    import socket
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"[CareerOS Contact] {subject}"
@@ -155,46 +239,29 @@ def handle_contact():
         msg["To"]      = ", ".join(_CONTACT_RECIPIENTS)
         msg["Reply-To"] = email
 
-        plain = (
-            f"New contact form submission from CareerOS\n"
-            f"{'─' * 48}\n\n"
-            f"Name:    {name}\n"
-            f"Email:   {email}\n"
-            f"Subject: {subject}\n\n"
-            f"Message:\n{message}\n"
-        )
-
-        html = f"""
-        <div style="font-family:Inter,system-ui,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#050814;color:#fff;border-radius:16px;">
-          <h2 style="margin:0 0 4px 0;font-size:20px;color:#fff;">New Contact Form Submission</h2>
-          <p style="margin:0 0 24px 0;font-size:13px;color:rgba(255,255,255,0.4);">via CareerOS Contact Page</p>
-          <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
-            <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;width:80px;">Name</td><td style="padding:8px 0;color:#fff;font-size:14px;font-weight:600;">{name}</td></tr>
-            <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;">Email</td><td style="padding:8px 0;color:#60a5fa;font-size:14px;"><a href="mailto:{email}" style="color:#60a5fa;text-decoration:none;">{email}</a></td></tr>
-            <tr><td style="padding:8px 0;color:rgba(255,255,255,0.5);font-size:13px;">Subject</td><td style="padding:8px 0;color:#fff;font-size:14px;">{subject}</td></tr>
-          </table>
-          <div style="padding:20px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;">
-            <p style="margin:0;font-size:14px;line-height:1.7;color:rgba(255,255,255,0.8);white-space:pre-wrap;">{message}</p>
-          </div>
-          <p style="margin-top:24px;font-size:11px;color:rgba(255,255,255,0.2);">This email was sent automatically by the CareerOS contact form.</p>
-        </div>
-        """
-
         msg.attach(MIMEText(plain, "plain"))
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(smtp_email, smtp_password)
-            server.sendmail(smtp_email, _CONTACT_RECIPIENTS, msg.as_string())
+        # 5-second timeout — fail fast so Flask can still return CORS headers
+        # instead of hanging 30s until Render's proxy kills the connection.
+        old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(5)
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(smtp_email, smtp_password)
+                server.sendmail(smtp_email, _CONTACT_RECIPIENTS, msg.as_string())
+        finally:
+            socket.setdefaulttimeout(old_timeout)
 
-        print(f"[CONTACT] Email sent to {_CONTACT_RECIPIENTS} from {name} <{email}>")
-        return jsonify({"status": "ok"}), 200
+        print(f"[CONTACT] Email sent via SMTP to {_CONTACT_RECIPIENTS} from {name} <{email}>")
+        return _contact_cors(jsonify({"status": "ok"}), 200)
 
     except Exception as e:
         print(f"[CONTACT] SMTP send failed: {e}")
-        return jsonify(
-            {"error": "Failed to send email. Please try again later."}
-        ), 500
+        return _contact_cors(
+            jsonify({"error": "Failed to send email. Please try again later."}),
+            500
+        )
 
 @app.errorhandler(Exception)
 def handle_exception(e):
