@@ -116,6 +116,10 @@ function PremiumJobTrackerContent() {
   const [activeAiView, setActiveAiView] = useState<'chat' | 'ats'>('chat');
   const dragJobRef = useRef<Job | null>(null);
 
+  // ── Delete confirmation modal ──────────────────────────────────────────────
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const pendingDeleteJob = jobs.find(j => j.id === pendingDeleteId) ?? null;
+
   const [formData, setFormData] = useState({
     company: '', position: '', location: '', status: 'Applied',
     applied_date: new Date().toISOString().split('T')[0],
@@ -169,8 +173,14 @@ function PremiumJobTrackerContent() {
     } catch { }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this application?')) return;
+  // Opens the styled delete confirmation modal — no window.confirm()
+  const handleDelete = (id: number) => setPendingDeleteId(id);
+
+  // Called when user clicks "Delete" in the confirmation modal
+  const confirmDelete = async () => {
+    if (pendingDeleteId === null) return;
+    const id = pendingDeleteId;
+    setPendingDeleteId(null);
     try {
       await fetch(`${API_BASE_URL}/api/jobs/${id}`, { method: 'DELETE', headers: authHeaders() });
       fetchJobs(); fetchStats(); fetchTrends();
@@ -646,6 +656,57 @@ function PremiumJobTrackerContent() {
               )}
               <button onClick={() => setShowInterviewQuestions(false)} className="bg-[#0F52BA] text-white px-6 py-2.5 rounded-xl text-sm font-medium mt-2">Close</button>
             </div>
+          </div>
+        )}
+
+        {/* ── Delete Confirmation Modal ──────────────────────────────────── */}
+        {pendingDeleteId !== null && (
+          <div className="fixed inset-0 flex items-center justify-center z-50 px-4"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-md rounded-3xl p-8"
+              style={{
+                background: 'rgba(18,20,30,0.95)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                boxShadow: '0 30px 80px rgba(0,0,0,0.6)'
+              }}
+            >
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/15">
+                  <span className="text-red-400 text-xl">🗑️</span>
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-lg">Delete Application?</h3>
+                  <p className="text-white/50 text-sm">This action cannot be undone.</p>
+                </div>
+              </div>
+              {pendingDeleteJob && (
+                <div className="mb-6 p-4 rounded-2xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <p className="text-white font-semibold">{pendingDeleteJob.position}</p>
+                  <p className="text-blue-400 text-sm">{pendingDeleteJob.company}</p>
+                  <p className="text-white/40 text-xs mt-1">Applied: {pendingDeleteJob.applied_date}</p>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setPendingDeleteId(null)}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white/70 hover:text-white transition"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
+                >
+                  Keep it
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="flex-1 py-3 rounded-2xl text-sm font-bold text-white transition"
+                  style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.35)' }}
+                >
+                  Yes, Delete
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </div>

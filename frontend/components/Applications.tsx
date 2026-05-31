@@ -79,16 +79,35 @@ export default function Applications(props: ApplicationsProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
+  const [sortBy, setSortBy] = useState<'Date (Newest)' | 'Date (Oldest)'>('Date (Newest)');
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
         setIsFilterOpen(false);
+      }
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+        setIsSortOpen(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const sortedJobs = [...filteredJobs].sort((a, b) => {
+    const timeA = new Date(a.applied_date).getTime();
+    const timeB = new Date(b.applied_date).getTime();
+    return sortBy === 'Date (Newest)' ? timeB - timeA : timeA - timeB;
+  });
+
+  const sortedAllJobs = [...jobs].sort((a, b) => {
+    const timeA = new Date(a.applied_date).getTime();
+    const timeB = new Date(b.applied_date).getTime();
+    return sortBy === 'Date (Newest)' ? timeB - timeA : timeA - timeB;
+  });
 
   return (
     <div className="space-y-8">
@@ -142,7 +161,7 @@ export default function Applications(props: ApplicationsProps) {
           {/* FILTER */}
           <div ref={filterRef} className="relative">
             <button
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              onClick={() => { setIsFilterOpen(!isFilterOpen); setIsSortOpen(false); }}
               className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all min-w-[140px]"
               style={{
                 background: 'rgba(255,255,255,0.05)',
@@ -178,6 +197,56 @@ export default function Applications(props: ApplicationsProps) {
                     }}
                     className={`w-full text-left px-4 py-2.5 text-sm transition-all ${
                       filter === s
+                        ? 'bg-blue-600 text-white'
+                        : 'text-white/70 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* SORT */}
+          <div ref={sortRef} className="relative">
+            <button
+              onClick={() => { setIsSortOpen(!isSortOpen); setIsFilterOpen(false); }}
+              className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all min-w-[150px]"
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                backdropFilter: 'blur(20px)'
+              }}
+            >
+              {sortBy}
+
+              <ChevronDown
+                size={16}
+                className={`transition-transform duration-200 ${
+                  isSortOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+            {isSortOpen && (
+              <div
+                className="absolute left-0 mt-2 w-full rounded-2xl overflow-hidden z-50"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  backdropFilter: 'blur(25px)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
+                }}
+              >
+                {['Date (Newest)', 'Date (Oldest)'].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      setSortBy(s as 'Date (Newest)' | 'Date (Oldest)');
+                      setIsSortOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-all ${
+                      sortBy === s
                         ? 'bg-blue-600 text-white'
                         : 'text-white/70 hover:text-white hover:bg-white/10'
                     }`}
@@ -286,13 +355,13 @@ export default function Applications(props: ApplicationsProps) {
       {viewMode === 'list' && (
         <div className="space-y-5">
 
-          {filteredJobs.length === 0 ? (
+          {sortedJobs.length === 0 ? (
             <div className="text-center text-white/40 py-20">
               <Briefcase size={50} className="mx-auto mb-3" />
               No applications yet
             </div>
           ) : (
-            filteredJobs.map(job => (
+            sortedJobs.map(job => (
               <motion.div
                 key={job.id}
                 className="rounded-[28px] p-6 border transition-all"
@@ -439,7 +508,7 @@ export default function Applications(props: ApplicationsProps) {
               </div>
 
               <div className="space-y-2">
-                {jobs
+                {sortedAllJobs
                   .filter(j => j.status === status)
                   .map(job => (
                     <JobCard

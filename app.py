@@ -935,6 +935,11 @@ def gmail_auth_status():
         return jsonify({"status": "none"})
 
 
+# ── Application limit constants ───────────────────────────────────────────────
+MAX_APPLICATIONS = 50   # hard cap per user
+RECENT_KEEP      = 5    # never delete the N most-recently applied-to entries
+
+
 # ── Gmail sync — OPTIONS preflight (explicit, never touches Flask-CORS) ───────
 @app.route('/api/gmail/sync', methods=['OPTIONS'])
 def gmail_sync_preflight():
@@ -1061,6 +1066,26 @@ def gmail_sync():
                 f'[GmailSync] Committed — '
                 f'added={added_count} updated={updated_count} skipped={skipped_count}'
             )
+
+            # Enforce limits silently
+            if added_count > 0:
+                current_total = JobApplication.query.filter_by(user_id=user_email).count()
+                if current_total > MAX_APPLICATIONS:
+                    need_to_delete = current_total - MAX_APPLICATIONS
+                    all_apps = (
+                        JobApplication.query
+                        .filter_by(user_id=user_email)
+                        .order_by(JobApplication.applied_date.desc(), JobApplication.id.desc())
+                        .all()
+                    )
+                    protected_ids = {a.id for a in all_apps[:RECENT_KEEP]}
+                    eligible = [a for a in reversed(all_apps) if a.id not in protected_ids]
+                    to_delete = eligible[:need_to_delete]
+                    for a in to_delete:
+                        db.session.delete(a)
+                    db.session.commit()
+                    print(f'[GmailSync] Auto-deleted {len(to_delete)} oldest entries to maintain limit.')
+
         except Exception as commit_err:
             db.session.rollback()
             print(f'[GmailSync] DB commit FAILED: {commit_err}')

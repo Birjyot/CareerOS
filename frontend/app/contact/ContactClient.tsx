@@ -56,43 +56,42 @@ const staggerItem: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
 };
 
-// ── Developer Data ────────────────────────────────────────────────────────────
 const DEVELOPERS = [
   {
     name: 'Birjyot Singh Sahiwal',
-    role: 'Full-Stack Engineer & Product Lead',
-    bio: 'Architected the core CareerOS platform. Specializes in Flask APIs, Next.js, PostgreSQL, and production deployment.',
+    role: 'AI Engineer & Product Lead',
+    bio: 'Developed the MVP blueprint and managed the product vision for CareerOS. Built AI agent integrations across Gemini, Groq, and OpenRouter, implemented NLP pipelines, and handled Google Auth — laying the technical foundation of the platform.',
     github: 'https://github.com/Birjyot',
     email: 'birjyotsahiwal7@gmail.com',
     linkedin: 'https://www.linkedin.com/in/birjyot-singh-sahiwal-12889a21a/',
     initials: 'BS',
     gradient: 'linear-gradient(135deg, #0F52BA, #3b82f6)',
     accentColor: '#3b82f6',
-    skills: ['Flask', 'Next.js', 'PostgreSQL', 'Google Cloud'],
+    skills: ['Gemini', 'Groq', 'OpenRouter', 'Flask', 'Google Auth'],
   },
   {
     name: 'Tejasav Singh',
-    role: 'AI Systems Engineer & Backend Developer',
-    bio: 'Built the AI router, Gmail sync engine, and ATS scoring pipeline. Expert in multi-provider AI systems and OAuth2.',
+    role: 'Frontend Engineer & AI Product Developer',
+    bio: 'Rebuilt the entire frontend from scratch and made it production-ready. Created Prepify — an AI-powered live interview practice agent using the Gemini API. Also led codebase restructuring for scalability and maintainability.',
     github: 'https://github.com/stejasav',
     email: 'tejasavsingh2528@gmail.com',
     linkedin: 'https://www.linkedin.com/in/tejasav-singh-63b618276/',
     initials: 'TS',
     gradient: 'linear-gradient(135deg, #7c3aed, #a855f7)',
     accentColor: '#a855f7',
-    skills: ['Gemini AI', 'Groq', 'Python', 'OAuth2'],
+    skills: ['Next.js', 'TypeScript', 'Tailwind CSS', 'Gemini API' ],
   },
   {
     name: 'Vikramjeet Singh Layal',
-    role: 'Frontend Engineer & UI/UX Designer',
-    bio: 'Designed and built the entire UI — from the immersive landing page to analytics dashboards and Kanban boards.',
+    role: 'Backend Engineer & Database Architect',
+    bio: 'Built and integrated the backend infrastructure, Supabase database, and managed API handling for Google Auth and AI agents. Implemented Gmail sync via regex parsing and set up test data pipelines in Supabase.',
     github: 'https://github.com/vjlayal',
     email: 'vjlayal777@gmail.com',
     linkedin: 'https://www.linkedin.com/in/vikramjeet-singh-layal/',
     initials: 'VL',
     gradient: 'linear-gradient(135deg, #0891b2, #06b6d4)',
     accentColor: '#06b6d4',
-    skills: ['React', 'Framer Motion', 'Tailwind CSS', 'Recharts'],
+    skills: ['Supabase', 'PostgreSQL', 'Google Auth', 'Next.js', 'Gmail API'],
   },
 ];
 
@@ -444,7 +443,7 @@ function ContactForm() {
     setStatus('loading');
     
     try {
-      const res = await fetch(process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/contact` : 'http://localhost:5001/api/contact', {
+      const res = await fetch('/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

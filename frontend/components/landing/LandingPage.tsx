@@ -170,12 +170,12 @@ function Hero() {
               {...fadeUp(0.1)}
               className="text-5xl sm:text-6xl xl:text-7xl font-black leading-[1.06] tracking-tight text-white! mb-6"
             >
-              Build a
+              Build a{' '}
               <RotatingText
                 words={ROTATING_WORDS}
                 interval={2400}
-                className="!bg-clip-text !bg-gradient-to-r !from-blue-400 !via-purple-400 !to-pink-400 inline-block"
-              />
+                className="metallic-silver-shimmer inline-block"
+              />{' '}
               Career
             </motion.h1>
 
